@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "strictBindCallApply": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@core/*": ["src/core/*"],
+      "@transport/*": ["src/transport/*"],
+      "@integrations/*": ["src/integrations/*"],
+      "@shared/*": ["src/shared/*"],
+      "@prisma/*": ["src/prisma/*"],
+      "@config/*": ["src/config/*"],
+      "@settings/*": ["src/settings/*"],
+      "@health/*": ["src/health/*"],
+      "@app/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*", "prisma/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

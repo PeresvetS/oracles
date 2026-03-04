@@ -1,0 +1,27 @@
+{
+  "name": "oracle",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "yarn@4.6.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "lint:errors": "turbo run lint:errors",
+    "test": "turbo run test",
+    "format": "turbo run format",
+    "db:generate": "yarn workspace @oracle/api db:generate",
+    "db:migrate": "yarn workspace @oracle/api db:migrate",
+    "db:migrate:prod": "yarn workspace @oracle/api db:migrate:prod",
+    "db:seed": "yarn workspace @oracle/api db:seed",
+    "db:studio": "yarn workspace @oracle/api db:studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0"
+  }
+}

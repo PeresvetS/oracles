@@ -1,0 +1,107 @@
+{
+  "name": "@oracle/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build && tsc-alias",
+    "start:prod": "node dist/main.js",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "lint:errors": "eslint \"src/**/*.ts\" --quiet",
+    "format": "prettier --write \"src/**/*.ts\" \"prisma/**/*.ts\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage",
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "db:generate": "yarn prisma generate",
+    "db:migrate": "yarn prisma migrate dev",
+    "db:migrate:prod": "yarn prisma migrate deploy",
+    "db:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
+    "db:studio": "yarn prisma studio"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/mapped-types": "^2.1.0",
+    "@nestjs/passport": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/platform-socket.io": "^11.0.0",
+    "@nestjs/swagger": "^11.0.0",
+    "@nestjs/throttler": "^6.5.0",
+    "@nestjs/websockets": "^11.0.0",
+    "@oracle/shared": "workspace:*",
+    "@prisma/client": "6.19.2",
+    "bcrypt": "^5.1.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "nestjs-pino": "^4.6.0",
+    "openai": "^6.25.0",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/express": "^5.0.0",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^22.0.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "jest": "^29.7.0",
+    "pino-pretty": "^13.1.3",
+    "prettier": "^3.0.0",
+    "prisma": "6.19.2",
+    "source-map-support": "^0.5.21",
+    "ts-jest": "^29.2.0",
+    "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.10",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.0"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma",
+    "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@core/(.*)$": "<rootDir>/core/$1",
+      "^@transport/(.*)$": "<rootDir>/transport/$1",
+      "^@integrations/(.*)$": "<rootDir>/integrations/$1",
+      "^@shared/(.*)$": "<rootDir>/shared/$1",
+      "^@prisma/prisma\\.(.*)$": "<rootDir>/prisma/prisma.$1",
+      "^@config/(.*)$": "<rootDir>/config/$1",
+      "^@settings/(.*)$": "<rootDir>/settings/$1",
+      "^@health/(.*)$": "<rootDir>/health/$1",
+      "^@app/(.*)$": "<rootDir>/$1"
+    }
+  }
+}

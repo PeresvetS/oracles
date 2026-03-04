@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum SessionMode {
+  GENERATE
+  VALIDATE
+}
+
+enum SessionStatus {
+  CONFIGURING
+  RUNNING
+  PAUSED
+  COMPLETED
+  ERROR
+}
+
+enum AgentRole {
+  DIRECTOR
+  ANALYST
+  RESEARCHER
+}
+
+enum RoundType {
+  /// Первый раунд: аналитики генерируют идеи
+  INITIAL
+  /// Раунды обсуждения
+  DISCUSSION
+  /// Раунд с участием ресерчера
+  RESEARCH
+  /// Финальный скоринг
+  SCORING
+  /// Раунд от пользователя (не расходует лимит)
+  USER_INITIATED
+  /// Финализация директором
+  FINAL
+}
+
+enum RoundStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MessageRole {
+  AGENT
+  USER
+  SYSTEM
+  DIRECTOR_DECISION
+}
+
+enum IdeaStatus {
+  PROPOSED
+  ACTIVE
+  REJECTED
+  FINAL
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+/// Пользователь системы. Все пользователи — равноправные админы.
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  /// bcrypt-хэш пароля
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+
+  sessions Session[]
+
+  @@map("users")
+}
+
+/// Сессия «совета директоров». Одна сессия = один полный цикл обсуждения.
+model Session {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  title  String
+  mode   SessionMode
+  status SessionStatus @default(CONFIGURING)
+
+  /// Основной промпт/задание от пользователя
+  inputPrompt   String  @db.Text
+  /// JSON-массив идей для режима VALIDATE (nullable)
+  existingIdeas String? @db.Text
+
+  /// Настройки фильтров: { maxComplexity, maxBudget, timeToRevenue, … }
+  filters Json
+
+  /// Лимиты раундов
+  maxRounds         Int @default(5)
+  currentRound      Int @default(0)
+  maxResearchCalls  Int @default(5)
+  researchCallsUsed Int @default(0)
+
+  /// Суммарный token tracking
+  totalTokensInput  Int   @default(0)
+  totalTokensOutput Int   @default(0)
+  totalCostUsd      Float @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  agents   Agent[]
+  rounds   Round[]
+  messages Message[]
+  ideas    Idea[]
+  report   Report?
+
+  @@index([userId, createdAt])
+  @@map("sessions")
+}
+
+/// Агент в сессии: роль + модель + промпт.
+model Agent {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role AgentRole
+  /// Отображаемое имя: "Аналитик 1 (Claude)", "Директор" и т.д.
+  name String
+
+  /// LLM-конфигурация
+  provider     String /// "openrouter" | "perplexity" | "anthropic" | "openai" | "google"
+  modelId      String /// "anthropic/claude-sonnet-4-6" | "openai/gpt-5.3-chat" | …
+  systemPrompt String @db.Text
+
+  /// Разрешён ли web_search для этого агента
+  webSearchEnabled Boolean @default(true)
+
+  /// Token tracking (агрегация по всем сообщениям агента)
+  totalTokensInput  Int   @default(0)
+  totalTokensOutput Int   @default(0)
+  totalCostUsd      Float @default(0)
+
+  createdAt DateTime @default(now())
+
+  messages Message[]
+
+  @@index([sessionId, role])
+  @@map("agents")
+}
+
+/// Раунд обсуждения. Нужен для чёткой визуальной разметки в UI.
+model Round {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  number Int
+  type   RoundType
+  status RoundStatus @default(IN_PROGRESS)
+
+  /// Если раунд инициирован пользователем — его сообщение
+  userMessage String? @db.Text
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  messages Message[]
+
+  @@index([sessionId, number])
+  @@map("rounds")
+}
+
+/// Сообщение от агента / пользователя / системы.
+model Message {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  roundId   String
+  round     Round   @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  /// null для USER и SYSTEM сообщений
+  agentId   String?
+  agent     Agent?  @relation(fields: [agentId], references: [id])
+
+  role    MessageRole
+  content String      @db.Text
+
+  /// Метаданные LLM-вызова
+  modelUsed    String?
+  tokensInput  Int?
+  tokensOutput Int?
+  costUsd      Float?
+  latencyMs    Int?
+
+  /// Tool calls: [{ tool, query, result }]
+  toolCalls Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@map("messages")
+}
+
+/// Бизнес-идея из сессии.
+model Idea {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  title   String
+  summary String    @db.Text
+  status  IdeaStatus @default(PROPOSED)
+
+  proposedByAgentId String?
+  proposedInRound   Int?
+
+  rejectedInRound Int?
+  rejectionReason String? @db.Text
+
+  /// Детали: { implementation, competitors, risks, opportunities,
+  ///           budget, cpl, unitEconomics, investmentsInNiche, timeToRevenue }
+  details Json?
+
+  /// Скоринг от каждого аналитика:
+  /// { "agentId": { ice: { impact, confidence, ease, total }, rice: { reach, impact, confidence, effort, total } } }
+  scores  Json?
+  avgIce  Float?
+  avgRice Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId, status])
+  @@map("ideas")
+}
+
+/// Финальный отчёт сессии.
+model Report {
+  id        String  @id @default(uuid())
+  sessionId String  @unique
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  /// Полный JSON: финальные идеи, скоринг, отброшенные, итоги
+  content Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("reports")
+}
+
+/// Шаблон системного промпта.
+model PromptTemplate {
+  id String @id @default(uuid())
+
+  role AgentRole
+  /// null = универсальный fallback; конкретный modelId = для конкретной модели
+  modelId String?
+
+  name      String
+  content   String  @db.Text
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role, modelId])
+  @@map("prompt_templates")
+}
+
+/// Глобальные настройки: API-ключи, дефолтные значения. Key-value.
+model Setting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
