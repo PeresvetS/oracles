@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
-    "build": "nest build && tsc-alias",
-    "start:prod": "node dist/main.js",
+    "dev": "sh -c 'if [ \"$NODE_ENV\" = \"production\" ]; then node dist/src/main.js; else nest start --watch; fi'",
+    "build": "yarn workspace @oracle/shared build && yarn prisma generate && nest build && tsc-alias",
+    "start:prod": "node dist/src/main.js",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "lint:errors": "eslint \"src/**/*.ts\" --quiet",
