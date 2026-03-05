@@ -83,9 +83,11 @@ export interface StreamingMessage {
   agentId: string | null;
   agentName: string | null;
   agentRole: string | null;
+  modelId?: string | null;
   roundId: string;
   content: string;
   isStreaming: boolean;
+  createdAt?: string | null;
   tokensInput?: number;
   tokensOutput?: number;
   costUsd?: number;

@@ -23,6 +23,7 @@ describe('OrchestratorService', () => {
     };
     message: {
       create: jest.Mock;
+      update: jest.Mock;
     };
   };
   let agentRunner: {
@@ -175,6 +176,7 @@ describe('OrchestratorService', () => {
       },
       message: {
         create: jest.fn().mockResolvedValue({ id: 'msg-user-1' }),
+        update: jest.fn().mockResolvedValue({}),
       },
     };
 
@@ -385,6 +387,66 @@ describe('OrchestratorService', () => {
           roundId: 'round-1',
         }),
       );
+    });
+
+    it('должен подставить fallback-задачу Директора при пустом ответе в INITIAL (VALIDATE)', async () => {
+      const session = createMockSession({
+        mode: 'VALIDATE',
+        existingIdeas: JSON.stringify(['Идея A', 'Идея B']),
+        maxRounds: 1,
+      });
+      prismaService.session.findUnique.mockResolvedValue(session);
+
+      let directorCallIndex = 0;
+      agentRunner.runAgent.mockImplementation(({ agent }: { agent: { role: string } }) => {
+        if (agent.role === AGENT_ROLE.DIRECTOR) {
+          directorCallIndex += 1;
+          if (directorCallIndex === 1) {
+            return Promise.resolve({
+              ...mockAgentResult,
+              content: '',
+              messageId: 'msg-director-initial',
+            });
+          }
+        }
+        return Promise.resolve(mockAgentResult);
+      });
+
+      await service.startSession('session-1');
+
+      expect(prismaService.message.update).toHaveBeenCalledWith({
+        where: { id: 'msg-director-initial' },
+        data: expect.objectContaining({
+          content: expect.stringContaining('режим VALIDATE'),
+        }),
+      });
+      expect(eventEmitter.emitMessageChunk).toHaveBeenCalledWith(
+        'session-1',
+        expect.objectContaining({
+          messageId: 'msg-director-initial',
+        }),
+      );
+    });
+
+    it('в режиме VALIDATE аналитик получает жёсткую инструкцию с existingIdeas и задачей Директора', async () => {
+      const session = createMockSession({
+        mode: 'VALIDATE',
+        inputPrompt: 'Провалидировать три SaaS-идеи из списка',
+        existingIdeas: JSON.stringify(['Идея X', 'Идея Y']),
+        maxRounds: 1,
+      });
+      prismaService.session.findUnique.mockResolvedValue(session);
+
+      await service.startSession('session-1');
+
+      const firstAnalystCall = agentRunner.runAgent.mock.calls[1]?.[0];
+      const messages = firstAnalystCall?.messages as Array<{ role: string; content: string }>;
+      const userInstruction = messages.find((message) => message.role === 'user')?.content ?? '';
+
+      expect(userInstruction).toContain('режим VALIDATE');
+      expect(userInstruction).toContain('existingIdeas');
+      expect(userInstruction).toContain('Идея X');
+      expect(userInstruction).toContain('Задание Директора');
     });
 
     it('в DISCUSSION раунде запускает: Директор (задача) → Аналитики → Директор (решение)', async () => {

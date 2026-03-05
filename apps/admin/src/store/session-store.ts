@@ -42,8 +42,12 @@ interface SessionStoreState {
 interface SessionStoreActions {
   /** Установить начальные сообщения из REST */
   setInitialMessages: (messages: StreamingMessage[]) => void;
+  /** Слить сообщения из REST-снапшота, не теряя уже полученные WS-чанки */
+  mergeMessagesFromSnapshot: (messages: StreamingMessage[]) => void;
   /** Установить начальные раунды из REST */
   setInitialRounds: (rounds: RoundEvent[]) => void;
+  /** Слить раунды из REST-снапшота с уже известными */
+  mergeRoundsFromSnapshot: (rounds: RoundEvent[]) => void;
   /** Установить снапшот сессии из REST */
   setSessionSnapshot: (snapshot: {
     status: SessionStatus;
@@ -94,6 +98,70 @@ function markToolCallsAsCompleted(
   return next;
 }
 
+function normalizeTimestamp(value?: string | null): number {
+  if (!value) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+}
+
+function sortMessagesByCreatedAt(messages: StreamingMessage[]): StreamingMessage[] {
+  return [...messages].sort((left, right) => {
+    const leftTs = normalizeTimestamp(left.createdAt);
+    const rightTs = normalizeTimestamp(right.createdAt);
+    if (leftTs !== rightTs) {
+      return leftTs - rightTs;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function mergeMessages(
+  current: StreamingMessage[],
+  snapshot: StreamingMessage[],
+): StreamingMessage[] {
+  const mergedById = new Map<string, StreamingMessage>();
+
+  for (const message of current) {
+    mergedById.set(message.id, message);
+  }
+
+  for (const incoming of snapshot) {
+    const existing = mergedById.get(incoming.id);
+    if (!existing) {
+      mergedById.set(incoming.id, incoming);
+      continue;
+    }
+
+    const shouldReplace =
+      (!incoming.isStreaming && existing.isStreaming) ||
+      incoming.content.length > existing.content.length ||
+      (!existing.createdAt && !!incoming.createdAt) ||
+      (!existing.modelId && !!incoming.modelId);
+
+    if (shouldReplace) {
+      mergedById.set(incoming.id, { ...existing, ...incoming });
+    }
+  }
+
+  return sortMessagesByCreatedAt(Array.from(mergedById.values()));
+}
+
+function mergeRounds(current: RoundEvent[], snapshot: RoundEvent[]): RoundEvent[] {
+  const mergedById = new Map<string, RoundEvent>();
+  for (const round of current) {
+    mergedById.set(round.roundId, round);
+  }
+  for (const round of snapshot) {
+    mergedById.set(round.roundId, round);
+  }
+
+  return Array.from(mergedById.values()).sort((left, right) => left.roundNumber - right.roundNumber);
+}
+
 const INITIAL_STATE: SessionStoreState = {
   messages: [],
   rounds: [],
@@ -108,9 +176,31 @@ const INITIAL_STATE: SessionStoreState = {
 export const useSessionStore = create<SessionStoreState & SessionStoreActions>()((set) => ({
   ...INITIAL_STATE,
 
-  setInitialMessages: (messages) => set({ messages }),
+  setInitialMessages: (messages) => set({ messages: sortMessagesByCreatedAt(messages) }),
 
-  setInitialRounds: (rounds) => set({ rounds }),
+  mergeMessagesFromSnapshot: (messages) =>
+    set((state) => ({
+      messages: mergeMessages(state.messages, messages),
+    })),
+
+  setInitialRounds: (rounds) =>
+    set({
+      rounds: [...rounds].sort((left, right) => left.roundNumber - right.roundNumber),
+    }),
+
+  mergeRoundsFromSnapshot: (rounds) =>
+    set((state) => {
+      const nextRounds = mergeRounds(state.rounds, rounds);
+      const nextCurrentRound =
+        nextRounds.length > 0
+          ? Math.max(state.currentRound, nextRounds[nextRounds.length - 1]?.roundNumber ?? 0)
+          : state.currentRound;
+
+      return {
+        rounds: nextRounds,
+        currentRound: nextCurrentRound,
+      };
+    }),
 
   setSessionSnapshot: (snapshot) =>
     set({

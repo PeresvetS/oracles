@@ -14,8 +14,9 @@ export function useSessionDetail(sessionId: string, enabled: boolean = true) {
 }
 
 /**
- * Загружает сообщения сессии однократно (для инициализации store).
- * Без авторефетча — новые сообщения приходят через WebSocket.
+ * Загружает сообщения сессии для инициализации и reconciliation store.
+ * Основной real-time поток идёт через WebSocket, но query может рефетчиться
+ * после reconnect/round:end для восстановления пропущенных событий.
  */
 export function useSessionMessagesInitial(sessionId: string, enabled: boolean = true) {
   return useQuery<MessagesResponse>({

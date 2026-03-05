@@ -63,6 +63,26 @@ const ANALYST_TASK_FALLBACK_VALIDATE = [
   'Разбирай только existingIdeas и вводные пользователя, фиксируй слабые места и улучшения.',
 ].join(' ');
 
+/** Необходимая guard-инструкция аналитикам в режиме VALIDATE (добавляется всегда) */
+const VALIDATE_ANALYST_GUARD_INSTRUCTION = [
+  'РЕЖИМ VALIDATE: работай только с existingIdeas и вводными пользователя.',
+  'Запрещено предлагать новый пул идей, не связанных с existingIdeas.',
+  'Если данных мало — явно запроси уточнение/ресерч, но не выдумывай новые направления.',
+].join(' ');
+
+/** Fallback-текст постановки задачи от Директора (если директор вернул пустой ответ) */
+const DIRECTOR_TASK_FALLBACK_GENERATE = [
+  'ЗАДАНИЕ АНАЛИТИКАМ (fallback): работайте строго по вводным и фильтрам этой сессии.',
+  'Сформируйте 2-3 конкретные гипотезы, оцените риски и путь к первым деньгам.',
+].join(' ');
+
+/** Fallback-текст постановки задачи от Директора для VALIDATE */
+const DIRECTOR_TASK_FALLBACK_VALIDATE = [
+  'ЗАДАНИЕ АНАЛИТИКАМ (fallback): режим VALIDATE.',
+  'Проверяйте только existingIdeas из контекста сессии и вводные пользователя.',
+  'Новый пул идей не генерировать; зафиксировать сильные/слабые стороны и рекомендации.',
+].join(' ');
+
 /** Результат выполнения discussion loop */
 type DiscussionLoopResult = 'completed' | 'paused';
 
@@ -345,6 +365,12 @@ export class OrchestratorService {
       tools: this.buildTools(director, { allowResearcherCall: false }),
       session,
     });
+    const resolvedDirectorTask = await this.ensureDirectorTaskVisible(
+      session.id,
+      directorResult.messageId,
+      session.mode,
+      directorResult.content,
+    );
 
     if (await this.shouldPause(session.id)) {
       return 'paused';
@@ -354,15 +380,7 @@ export class OrchestratorService {
     const analystResults = await Promise.allSettled(
       analysts.map(async (analyst) => {
         const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
-        const analystMessages = this.hasUsableDirectorTask(directorResult.content)
-          ? context
-          : [
-              ...context,
-              {
-                role: 'system' as const,
-                content: this.buildAnalystFallbackInstruction(session.mode),
-              },
-            ];
+        const analystMessages = this.buildAnalystMessages(context, session, resolvedDirectorTask);
         return this.runAgentWithLogging('INITIAL.ANALYST', {
           agent: analyst,
           messages: analystMessages,
@@ -449,6 +467,12 @@ export class OrchestratorService {
         tools: this.buildTools(director, { allowResearcherCall: false }),
         session,
       });
+      const resolvedDirectorTask = await this.ensureDirectorTaskVisible(
+        session.id,
+        directorTaskResult.messageId,
+        session.mode,
+        directorTaskResult.content,
+      );
 
       if (await this.shouldPause(session.id)) {
         this.logger.log(
@@ -460,15 +484,7 @@ export class OrchestratorService {
       const analystResults = await Promise.allSettled(
         analysts.map(async (analyst) => {
           const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
-          const analystMessages = this.hasUsableDirectorTask(directorTaskResult.content)
-            ? context
-            : [
-                ...context,
-                {
-                  role: 'system' as const,
-                  content: this.buildAnalystFallbackInstruction(session.mode),
-                },
-              ];
+          const analystMessages = this.buildAnalystMessages(context, session, resolvedDirectorTask);
           return this.runAgentWithLogging('DISCUSSION.ANALYST', {
             agent: analyst,
             messages: analystMessages,
@@ -933,10 +949,66 @@ export class OrchestratorService {
     return content.trim().length > 0;
   }
 
+  private buildAnalystMessages(
+    context: ChatMessage[],
+    session: Pick<SessionWithAgents, 'mode' | 'inputPrompt' | 'existingIdeas'>,
+    directorTaskContent: string,
+  ): ChatMessage[] {
+    const messages = [...context];
+    if (session.mode === SESSION_MODE.VALIDATE) {
+      messages.push({ role: 'system', content: VALIDATE_ANALYST_GUARD_INSTRUCTION });
+    }
+
+    const resolvedTask = this.hasUsableDirectorTask(directorTaskContent)
+      ? directorTaskContent
+      : this.buildAnalystFallbackInstruction(session.mode);
+    const roundInstruction =
+      session.mode === SESSION_MODE.VALIDATE
+        ? [
+            'КРИТИЧЕСКОЕ ПРАВИЛО: режим VALIDATE. Разрешено обсуждать только existingIdeas и вводные пользователя.',
+            `Вводные пользователя:\n${session.inputPrompt}`,
+            `existingIdeas:\n${session.existingIdeas ?? 'N/A'}`,
+            `Задание Директора на этот ход:\n${resolvedTask}`,
+          ].join('\n\n')
+        : `Задание Директора на этот ход:\n${resolvedTask}`;
+    messages.push({ role: 'user', content: roundInstruction });
+
+    return messages;
+  }
+
   private buildAnalystFallbackInstruction(mode: SessionMode): string {
     return mode === SESSION_MODE.VALIDATE
       ? ANALYST_TASK_FALLBACK_VALIDATE
       : ANALYST_TASK_FALLBACK_GENERATE;
+  }
+
+  private buildDirectorTaskFallback(mode: SessionMode): string {
+    return mode === SESSION_MODE.VALIDATE
+      ? DIRECTOR_TASK_FALLBACK_VALIDATE
+      : DIRECTOR_TASK_FALLBACK_GENERATE;
+  }
+
+  private async ensureDirectorTaskVisible(
+    sessionId: string,
+    messageId: string,
+    mode: SessionMode,
+    content: string,
+  ): Promise<string> {
+    if (this.hasUsableDirectorTask(content)) {
+      return content;
+    }
+
+    const fallbackTask = this.buildDirectorTaskFallback(mode);
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: { content: fallbackTask },
+    });
+    this.eventEmitter.emitMessageChunk(sessionId, {
+      messageId,
+      chunk: fallbackTask,
+    });
+    this.logger.warn(`[${sessionId}] Пустая постановка задачи Директора, применён fallback`);
+    return fallbackTask;
   }
 
   private acquireSessionRun(sessionId: string, source: 'start' | 'resume'): boolean {

@@ -69,8 +69,10 @@ function convertToStreamingMessages(messages: MessageWithAgent[]): StreamingMess
     agentId: m.agentId ?? null,
     agentName: m.agent?.name ?? null,
     agentRole: m.agent?.role ?? null,
+    modelId: m.agent?.modelId ?? null,
     roundId: m.roundId,
     content: m.content,
+    createdAt: m.createdAt,
     isStreaming: false,
     tokensInput: m.tokensInput ?? undefined,
     tokensOutput: m.tokensOutput ?? undefined,
@@ -161,7 +163,9 @@ export default function SessionPage() {
   const toolCalls = useSessionStore((s) => s.toolCalls);
   const {
     setInitialMessages,
+    mergeMessagesFromSnapshot,
     setInitialRounds,
+    mergeRoundsFromSnapshot,
     setSessionSnapshot,
   } = useSessionStore.getState();
 
@@ -181,8 +185,25 @@ export default function SessionPage() {
         totalCostUsd: session.totalCostUsd,
       });
       setIsInitialized(true);
+      return;
     }
-  }, [messagesData, session, isInitialized, setInitialMessages, setInitialRounds, setSessionSnapshot]);
+
+    if (messagesData && session && isInitialized) {
+      const streamingMsgs = convertToStreamingMessages(messagesData.items);
+      const extractedRounds = extractRoundsFromMessages(messagesData.items, session.id);
+      mergeMessagesFromSnapshot(streamingMsgs);
+      mergeRoundsFromSnapshot(extractedRounds);
+    }
+  }, [
+    messagesData,
+    session,
+    isInitialized,
+    setInitialMessages,
+    mergeMessagesFromSnapshot,
+    setInitialRounds,
+    mergeRoundsFromSnapshot,
+    setSessionSnapshot,
+  ]);
 
   // --- Производные данные ---
   const agentColorMap = useMemo(

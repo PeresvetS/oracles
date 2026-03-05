@@ -115,6 +115,7 @@ export function useSessionSocket(sessionId: string): void {
   const token = useAuthStore((s) => s.token);
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
+  const backfillRequestedRef = useRef<Set<string>>(new Set());
 
   const {
     addMessage,
@@ -137,6 +138,8 @@ export function useSessionSocket(sessionId: string): void {
 
     const joinRoom = (): void => {
       socket.emit(WS_EVENTS.SESSION_JOIN, { sessionId });
+      // Backfill на случай, если часть событий пришла до join комнаты
+      void queryClient.invalidateQueries({ queryKey: ['session-messages', sessionId] });
     };
 
     // --- Соединение ---
@@ -159,6 +162,7 @@ export function useSessionSocket(sessionId: string): void {
       joinRoom();
       // Рефреш данных сессии при восстановлении соединения
       void queryClient.invalidateQueries({ queryKey: ['session', sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['session-messages', sessionId] });
     });
 
     // Если уже подключён (кэшированный сокет), сразу присоединяемся
@@ -170,6 +174,7 @@ export function useSessionSocket(sessionId: string): void {
     // --- Стриминг сообщений ---
     socket.on(WS_EVENTS.AGENT_MESSAGE_START, (data: WsMessageStartPayload) => {
       if (data.sessionId !== sessionId) return;
+      backfillRequestedRef.current.delete(data.messageId);
       addMessage({
         id: data.messageId,
         agentId: data.agentId,
@@ -183,17 +188,27 @@ export function useSessionSocket(sessionId: string): void {
 
     socket.on(WS_EVENTS.AGENT_MESSAGE_CHUNK, (data: WsMessageChunkPayload) => {
       if (data.sessionId !== sessionId) return;
+      const hasMessage = useSessionStore.getState().messages.some((m) => m.id === data.messageId);
       appendToMessage(data.messageId, data.chunk);
+      if (!hasMessage && !backfillRequestedRef.current.has(data.messageId)) {
+        backfillRequestedRef.current.add(data.messageId);
+        void queryClient.invalidateQueries({ queryKey: ['session-messages', sessionId] });
+      }
     });
 
     socket.on(WS_EVENTS.AGENT_MESSAGE_END, (data: WsMessageEndPayload) => {
       if (data.sessionId !== sessionId) return;
+      const hasMessage = useSessionStore.getState().messages.some((m) => m.id === data.messageId);
       finalizeMessage(data.messageId, {
         tokensInput: data.tokensInput,
         tokensOutput: data.tokensOutput,
         costUsd: data.costUsd,
         latencyMs: data.latencyMs,
       });
+      backfillRequestedRef.current.delete(data.messageId);
+      if (!hasMessage) {
+        void queryClient.invalidateQueries({ queryKey: ['session-messages', sessionId] });
+      }
     });
 
     // --- Tool calls ---
@@ -222,6 +237,8 @@ export function useSessionSocket(sessionId: string): void {
     socket.on(WS_EVENTS.ROUND_END, (data: WsRoundEndPayload) => {
       if (data.sessionId !== sessionId) return;
       endRound(data.roundId);
+      // На границе раунда синхронизируем REST-снимок, чтобы не терять сообщения
+      void queryClient.invalidateQueries({ queryKey: ['session-messages', sessionId] });
     });
 
     // --- Статус сессии ---

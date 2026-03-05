@@ -63,9 +63,9 @@ function normalizeMessage(msg: MessageWithAgent | StreamingMessage): NormalizedM
       role: msg.agentRole ?? 'ASSISTANT',
       content: msg.content,
       agentName: msg.agentName,
-      modelId: null,
+      modelId: msg.modelId ?? null,
       costUsd: msg.costUsd,
-      createdAt: null,
+      createdAt: msg.createdAt ?? null,
       isStreaming: msg.isStreaming,
     };
   }
