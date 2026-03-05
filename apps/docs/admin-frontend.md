@@ -33,7 +33,7 @@ apps/admin/src/
 │   ├── sessions/
 │   │   ├── page.tsx             # Список сессий (дашборд) + кнопка «+ Новая сессия»
 │   │   ├── new/page.tsx         # Полная форма создания сессии (агенты, фильтры, лимиты)
-│   │   └── [id]/page.tsx        # Страница сессии: Tabs «Чат» / «Отчёт»
+│   │   └── [id]/page.tsx        # Страница сессии: Tabs «Чат» / «Отчёт» (автопереход на «Отчёт» после завершения)
 ├── components/
 │   ├── ui/
 │   │   ├── button.tsx, card.tsx, input.tsx, label.tsx, badge.tsx, textarea.tsx, skeleton.tsx
@@ -61,7 +61,7 @@ apps/admin/src/
 │   │   ├── rejected-ideas-list.tsx # Shadcn Collapsible: список отклонённых идей
 │   │   ├── export-buttons.tsx   # Кнопки CSV/JSON с api.downloadBlob()
 │   │   ├── idea-table.tsx       # @tanstack/react-table: сортировка, выделение строки
-│   │   └── report-view.tsx      # Контейнер вкладки «Отчёт»: export + chart + table + details
+│   │   └── report-view.tsx      # Контейнер вкладки «Отчёт»: export + chart + table + details + empty state
 │   └── chat/
 │       ├── message-bubble.tsx   # Пузырь сообщения (REST + streaming), мигающий курсор, tool calls
 │       ├── round-divider.tsx    # Горизонтальный разделитель раундов (номер + тип + Badge)

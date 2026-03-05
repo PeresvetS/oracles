@@ -140,6 +140,8 @@ export default function SessionPage() {
   const queryClient = useQueryClient();
 
   const [isInitialized, setIsInitialized] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chat' | 'report'>('chat');
+  const hasAutoOpenedReport = useRef(false);
 
   // --- REST данные (однократная загрузка) ---
   const { data: session, isLoading: sessionLoading } = useSessionDetail(id, isAuthenticated);
@@ -200,6 +202,13 @@ export default function SessionPage() {
   const maxRounds = session?.maxRounds ?? 0;
   const totalCostUsd = storeCostUsd;
   const canOpenReport = currentStatus === SESSION_STATUS.COMPLETED || hasReport;
+
+  useEffect(() => {
+    if (canOpenReport && !hasAutoOpenedReport.current) {
+      setActiveTab('report');
+      hasAutoOpenedReport.current = true;
+    }
+  }, [canOpenReport]);
 
   useEffect(() => {
     if (!sessionLoading && !session) {
@@ -300,7 +309,11 @@ export default function SessionPage() {
       <AgentStatusBar agents={session.agents} agentColorMap={agentColorMap} />
 
       {/* Табы: Чат / Отчёт */}
-      <Tabs defaultValue="chat" className="flex flex-1 flex-col min-h-0">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as 'chat' | 'report')}
+        className="flex flex-1 flex-col min-h-0"
+      >
         <TabsList className="mx-4 mt-2 w-fit shrink-0">
           <TabsTrigger value="chat">{t.session.chatTab}</TabsTrigger>
           <TabsTrigger

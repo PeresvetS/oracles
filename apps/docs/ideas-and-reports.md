@@ -44,7 +44,7 @@ PROPOSED ──→ ACTIVE ──→ FINAL
 |-------|----------|
 | `create(data)` | Создать одну идею со статусом PROPOSED |
 | `createFromAgentResponse(sessionId, agentId, roundNumber, ideas[])` | Массовое создание из ответа агента |
-| `parseIdeasFromText(content)` | Парсинг идей из markdown/list формата ответа аналитика |
+| `parseIdeasFromText(content)` | Парсинг идей из JSON/markdown/list формата ответа аналитика |
 | `updateStatus(ideaId, status, metadata?)` | Обновить статус с валидацией допустимых переходов |
 | `addScores(ideaId, agentId, ice, rice)` | Добавить ICE/RICE скоринг аналитика, пересчитать avgIce/avgRice |
 | `addScore(ideaId, agentId, score)` | Backward-compatible обёртка над addScores |
@@ -67,6 +67,15 @@ interface AnalystScore {
 После каждого `addScore()` автоматически пересчитываются:
 - `avgIce = mean(scores[*].ice.total)`
 - `avgRice = mean(scores[*].rice.total)`
+
+### Парсинг идей из ответа аналитика
+
+`parseIdeasFromText()` использует каскад стратегий:
+1. JSON first: ищет fenced ` ```json ` блоки (или чистый JSON), поддерживает ключи `ideas`, `finalIdeas`, `finalists`, `topIdeas`, `recommendations`.
+2. Markdown headings: блоки `### Название`.
+3. Fallback: нумерованные/маркированные строки `1. Идея — summary`.
+
+Это повышает стабильность, когда модели отвечают структурированным JSON вместо markdown-текста.
 
 ### Финализация
 

@@ -49,6 +49,33 @@ const IDEA_SUMMARY_MAX_LENGTH = 1_200;
 /** Минимальная длина summary идеи */
 const IDEA_SUMMARY_MIN_LENGTH = 10;
 
+/** Имена массивов идей в JSON-ответах LLM */
+const IDEA_ARRAY_KEYS = [
+  'ideas',
+  'finalIdeas',
+  'finalists',
+  'topIdeas',
+  'recommendations',
+] as const;
+
+/** Поля с заголовком идеи в JSON-объектах */
+const IDEA_TITLE_KEYS = ['title', 'name', 'idea', 'concept'] as const;
+
+/** Поля с описанием идеи в JSON-объектах */
+const IDEA_SUMMARY_KEYS = [
+  'summary',
+  'description',
+  'thesis',
+  'value',
+  'mechanics',
+  'implementation',
+  'mvp_approach',
+  'key_risk',
+] as const;
+
+/** Regex для поиска fenced code blocks c JSON */
+const JSON_FENCE_REGEX = /```(?:json)?\s*([\s\S]*?)```/gi;
+
 /**
  * Сервис управления идеями.
  *
@@ -139,6 +166,11 @@ export class IdeasService {
   parseIdeasFromText(content: string): ParsedIdeaCandidate[] {
     if (!content.trim()) {
       return [];
+    }
+
+    const jsonIdeas = this.extractIdeasFromJson(content);
+    if (jsonIdeas.length > 0) {
+      return this.deduplicateIdeas(jsonIdeas);
     }
 
     const headingIdeas = this.extractIdeasFromHeadings(content);
@@ -493,5 +525,139 @@ export class IdeasService {
     }
 
     return ideas;
+  }
+
+  private extractIdeasFromJson(content: string): ParsedIdeaCandidate[] {
+    const payloads = this.extractJsonPayloads(content);
+    if (payloads.length === 0) {
+      return [];
+    }
+
+    const parsedIdeas: ParsedIdeaCandidate[] = [];
+
+    for (const payload of payloads) {
+      for (const candidate of this.resolveIdeaCandidates(payload)) {
+        if (!this.isRecord(candidate)) {
+          continue;
+        }
+
+        const title = this.pickFirstString(candidate, IDEA_TITLE_KEYS);
+        const summary =
+          this.pickFirstString(candidate, IDEA_SUMMARY_KEYS) ?? this.buildSummary(candidate);
+
+        if (title && summary) {
+          parsedIdeas.push({ title, summary });
+        }
+      }
+    }
+
+    return parsedIdeas;
+  }
+
+  private extractJsonPayloads(content: string): unknown[] {
+    const payloads: unknown[] = [];
+
+    for (const match of content.matchAll(JSON_FENCE_REGEX)) {
+      const body = (match[1] ?? '').trim();
+      if (!body) continue;
+      const parsed = this.tryParseJson(body);
+      if (parsed !== null) {
+        payloads.push(parsed);
+      }
+    }
+
+    if (payloads.length > 0) {
+      return payloads;
+    }
+
+    const trimmed = content.trim();
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      const parsed = this.tryParseJson(trimmed);
+      if (parsed !== null) {
+        payloads.push(parsed);
+      }
+    }
+
+    return payloads;
+  }
+
+  private resolveIdeaCandidates(payload: unknown): unknown[] {
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+
+    if (!this.isRecord(payload)) {
+      return [];
+    }
+
+    for (const key of IDEA_ARRAY_KEYS) {
+      const value = payload[key];
+      if (Array.isArray(value)) {
+        return value;
+      }
+    }
+
+    return [payload];
+  }
+
+  private buildSummary(record: Record<string, unknown>): string | null {
+    const parts: string[] = [];
+
+    for (const key of IDEA_SUMMARY_KEYS) {
+      const value = record[key];
+      if (typeof value !== 'string') {
+        continue;
+      }
+
+      const trimmed = value.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      if (!parts.includes(trimmed)) {
+        parts.push(trimmed);
+      }
+
+      if (parts.length >= 2) {
+        break;
+      }
+    }
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return parts.join(' ');
+  }
+
+  private pickFirstString(record: Record<string, unknown>, keys: readonly string[]): string | null {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value !== 'string') {
+        continue;
+      }
+
+      const trimmed = value.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    return null;
+  }
+
+  private tryParseJson(input: string): unknown | null {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return null;
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }

@@ -133,6 +133,7 @@ export const ru: I18nKeys = {
   report: {
     title: 'Отчёт',
     noReport: 'Отчёт будет доступен после завершения сессии.',
+    noReportData: 'Отчёт создан, но финальные или отклонённые идеи пока отсутствуют.',
     ideas: 'Финальные идеи',
     rejectedIdeas: 'Отклонённые идеи',
     exportCsv: 'Скачать CSV',

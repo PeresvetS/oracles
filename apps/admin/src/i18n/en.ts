@@ -130,6 +130,7 @@ export interface I18nKeys {
   report: {
     title: string;
     noReport: string;
+    noReportData: string;
     ideas: string;
     rejectedIdeas: string;
     exportCsv: string;
@@ -369,6 +370,7 @@ export const en: I18nKeys = {
   report: {
     title: 'Report',
     noReport: 'The report will be available after the session is completed.',
+    noReportData: 'Report exists, but there are no final or rejected ideas yet.',
     ideas: 'Final ideas',
     rejectedIdeas: 'Rejected ideas',
     exportCsv: 'Download CSV',

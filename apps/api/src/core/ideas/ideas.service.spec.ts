@@ -176,6 +176,42 @@ describe('IdeasService', () => {
 
       expect(result).toHaveLength(1);
     });
+
+    it('парсит идеи из JSON-блока finalists', () => {
+      const result = service.parseIdeasFromText(
+        [
+          '```json',
+          JSON.stringify(
+            {
+              finalists: [
+                {
+                  name: 'AI Sales Brief',
+                  summary: 'Брифинг аккаунта перед звонком за 30 секунд.',
+                },
+                {
+                  title: 'Marketplace Alerts',
+                  description: 'Алерты по падению карточек с рекомендациями действий.',
+                },
+              ],
+            },
+            null,
+            2,
+          ),
+          '```',
+        ].join('\n'),
+      );
+
+      expect(result).toEqual([
+        {
+          title: 'AI Sales Brief',
+          summary: 'Брифинг аккаунта перед звонком за 30 секунд.',
+        },
+        {
+          title: 'Marketplace Alerts',
+          summary: 'Алерты по падению карточек с рекомендациями действий.',
+        },
+      ]);
+    });
   });
 
   describe('updateStatus', () => {

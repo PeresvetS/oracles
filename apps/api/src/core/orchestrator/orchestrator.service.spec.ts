@@ -387,6 +387,23 @@ describe('OrchestratorService', () => {
       );
     });
 
+    it('в DISCUSSION раунде сначала запускает аналитиков, затем Директора', async () => {
+      const session = createMockSession({ maxRounds: 2 });
+      prismaService.session.findUnique.mockResolvedValue(session);
+
+      await service.startSession('session-1');
+
+      // INITIAL: 1 director + 2 analysts + 1 director = 4 вызова
+      // DISCUSSION round #2: затем 2 analysts, потом director
+      const discussionFirstCall = agentRunner.runAgent.mock.calls[4]?.[0];
+      const discussionSecondCall = agentRunner.runAgent.mock.calls[5]?.[0];
+      const discussionDirectorCall = agentRunner.runAgent.mock.calls[6]?.[0];
+
+      expect(discussionFirstCall?.agent.role).toBe(AGENT_ROLE.ANALYST);
+      expect(discussionSecondCall?.agent.role).toBe(AGENT_ROLE.ANALYST);
+      expect(discussionDirectorCall?.agent.role).toBe(AGENT_ROLE.DIRECTOR);
+    });
+
     it('должен установить status=ERROR при критической ошибке', async () => {
       prismaService.session.findUnique.mockRejectedValue(new Error('DB connection lost'));
 
@@ -431,7 +448,7 @@ describe('OrchestratorService', () => {
           data: { type: 'RESEARCH' },
         }),
       );
-      expect(agentRunner.runAgent).toHaveBeenCalledTimes(8);
+      expect(agentRunner.runAgent).toHaveBeenCalledTimes(10);
     });
 
     it('должен прервать discussion loop при PAUSED', async () => {

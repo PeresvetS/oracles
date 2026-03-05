@@ -41,13 +41,14 @@ OrchestratorService.startSession(sessionId)
     │
     ├── DISCUSSION LOOP (while currentRound < maxRounds):
     │   1. Проверка флага паузы/статуса PAUSED перед каждым новым раундом
-    │   2. Директор анализирует:
-    │      - содержит сигнал финализации? → break
-    │      - вызвал call_researcher? → раунд помечается как RESEARCH, переход к следующему раунду
-    │      - иначе → DISCUSSION раунд и ответы аналитиков
+    │   2. Аналитики параллельно (Promise.allSettled) дают ответы по текущему фокусу
     │   3. После ответов аналитиков идеи снова парсятся и добавляются в пул сессии
-    │   4. После каждого хода (Директор/Аналитики) повторная проверка паузы
-    │   5. currentRound обновляется только после завершения раунда
+    │   4. Директор получает ответы аналитиков и принимает решение:
+    │      - сигнал финализации? → break
+    │      - вызван call_researcher? → раунд помечается как RESEARCH, переход к следующему раунду
+    │      - иначе → CONTINUE (следующий DISCUSSION раунд)
+    │   5. После каждого хода (Аналитики/Директор) повторная проверка паузы
+    │   6. currentRound обновляется только после завершения раунда
     │
     ├── SCORING раунд:
     │   Каждый аналитик оценивает идеи по ICE/RICE
@@ -178,6 +179,7 @@ FINALIZATION_SIGNALS: ['ФИНАЛИЗИРУЮ', 'ФИНАЛЬНЫЙ ОТЧЁТ'
 // Tool definitions
 CALL_RESEARCHER_TOOL_DEFINITION  — JSON Schema для call_researcher (параметр: query)
 TOOL_NAMES = { WEB_SEARCH: 'web_search', CALL_RESEARCHER: 'call_researcher' }
+DISCUSSION_DIRECTOR_DECISION_INSTRUCTION — короткая инструкция Директору в фазе арбитража (формат решения + ограничение на шум)
 
 // Сообщения
 AGENT_TIMEOUT_ERROR = 'Превышен таймаут ожидания ответа от LLM'

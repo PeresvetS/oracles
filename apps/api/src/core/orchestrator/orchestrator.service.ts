@@ -17,6 +17,7 @@ import {
   SCORING_INSTRUCTION,
   FINAL_INSTRUCTION,
   TOOL_NAMES,
+  DISCUSSION_DIRECTOR_DECISION_INSTRUCTION,
 } from '@core/orchestrator/constants/orchestrator.constants';
 import type {
   SessionWithAgents,
@@ -49,6 +50,9 @@ const INITIAL_DIRECTOR_TASK_FALLBACK = [
   'Технический fallback: Директор не сформулировал явное задание.',
   'Работайте строго по вводным и фильтрам сессии, предложите 2-3 конкретные идеи.',
 ].join(' ');
+
+/** Минимальная длина содержательного задания Директора в INITIAL */
+const INITIAL_DIRECTOR_TASK_MIN_LENGTH = 60;
 
 /** Результат выполнения discussion loop */
 type DiscussionLoopResult = 'completed' | 'paused';
@@ -330,10 +334,9 @@ export class OrchestratorService {
     const analystResults = await Promise.allSettled(
       analysts.map(async (analyst) => {
         const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
-        const analystMessages =
-          directorResult.content.trim().length > 0
-            ? context
-            : [...context, { role: 'system' as const, content: INITIAL_DIRECTOR_TASK_FALLBACK }];
+        const analystMessages = this.hasUsableDirectorTask(directorResult.content)
+          ? context
+          : [...context, { role: 'system' as const, content: INITIAL_DIRECTOR_TASK_FALLBACK }];
         return this.runAgentWithLogging('INITIAL.ANALYST', {
           agent: analyst,
           messages: analystMessages,
@@ -402,14 +405,46 @@ export class OrchestratorService {
         type: round.type,
       });
 
+      const analystResults = await Promise.allSettled(
+        analysts.map(async (analyst) => {
+          const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
+          return this.runAgentWithLogging('DISCUSSION.ANALYST', {
+            agent: analyst,
+            messages: context,
+            sessionId: session.id,
+            roundId: round.id,
+            tools: this.buildTools(analyst),
+            session,
+          });
+        }),
+      );
+
+      this.logSettledResults(session.id, `DISCUSSION ${round.number}`, analystResults);
+      await this.parseAndPersistIdeasFromResults(
+        session.id,
+        round.number,
+        analysts,
+        analystResults,
+      );
+
+      if (await this.shouldPause(session.id)) {
+        this.logger.log(`[${session.id}] Пауза после ответов аналитиков в раунде ${round.number}`);
+        return 'paused';
+      }
+
+      // После ответов аналитиков Директор принимает решение по следующему шагу
       const directorContext = await this.roundManager.buildAgentContext(
         director,
         session,
         round.number,
       );
-      const directorResult = await this.runAgentWithLogging('DISCUSSION.DIRECTOR', {
+      const directorMessages: ChatMessage[] = [
+        ...directorContext,
+        { role: 'user', content: DISCUSSION_DIRECTOR_DECISION_INSTRUCTION },
+      ];
+      const directorResult = await this.runAgentWithLogging('DISCUSSION.DIRECTOR_DECISION', {
         agent: director,
-        messages: directorContext,
+        messages: directorMessages,
         sessionId: session.id,
         roundId: round.id,
         tools: this.buildTools(director),
@@ -417,7 +452,7 @@ export class OrchestratorService {
       });
 
       if (await this.shouldPause(session.id)) {
-        this.logger.log(`[${session.id}] Пауза после ответа Директора в раунде ${round.number}`);
+        this.logger.log(`[${session.id}] Пауза после решения Директора в раунде ${round.number}`);
         return 'paused';
       }
 
@@ -451,33 +486,6 @@ export class OrchestratorService {
         });
         currentRound = round.number;
         continue;
-      }
-
-      const analystResults = await Promise.allSettled(
-        analysts.map(async (analyst) => {
-          const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
-          return this.runAgentWithLogging('DISCUSSION.ANALYST', {
-            agent: analyst,
-            messages: context,
-            sessionId: session.id,
-            roundId: round.id,
-            tools: this.buildTools(analyst),
-            session,
-          });
-        }),
-      );
-
-      this.logSettledResults(session.id, `DISCUSSION ${round.number}`, analystResults);
-      await this.parseAndPersistIdeasFromResults(
-        session.id,
-        round.number,
-        analysts,
-        analystResults,
-      );
-
-      if (await this.shouldPause(session.id)) {
-        this.logger.log(`[${session.id}] Пауза после ответов аналитиков в раунде ${round.number}`);
-        return 'paused';
       }
 
       await this.roundManager.completeRound(round.id);
@@ -858,6 +866,10 @@ export class OrchestratorService {
     return (result.toolCalls ?? []).some(
       (toolCall) => toolCall.tool === TOOL_NAMES.CALL_RESEARCHER,
     );
+  }
+
+  private hasUsableDirectorTask(content: string): boolean {
+    return content.trim().length >= INITIAL_DIRECTOR_TASK_MIN_LENGTH;
   }
 
   private async shouldPause(sessionId: string): Promise<boolean> {

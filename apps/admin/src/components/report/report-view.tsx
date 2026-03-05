@@ -50,6 +50,15 @@ export function ReportView({ sessionId, sessionStatus }: ReportViewProps) {
 
   const finalIdeas = report.content.finalIdeas ?? [];
   const rejectedIdeas = report.content.rejectedIdeas ?? [];
+
+  if (finalIdeas.length === 0 && rejectedIdeas.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
+        <p>{t.report.noReportData}</p>
+      </div>
+    );
+  }
+
   const displayIdea = selectedIdea ?? finalIdeas[0] ?? null;
 
   return (
