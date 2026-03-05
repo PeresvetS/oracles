@@ -8,6 +8,7 @@ import type {
   ConnectionStatus,
   StatusUpdate,
 } from '@/types/index';
+import { SESSION_STATUS } from '@/types/index';
 
 /** Состояние вызова инструмента */
 interface ToolCallState {
@@ -72,6 +73,25 @@ interface SessionStoreActions {
   setConnectionStatus: (status: ConnectionStatus) => void;
   /** Сбросить состояние (при уходе со страницы) */
   reset: () => void;
+}
+
+function markToolCallsAsCompleted(
+  toolCalls: Record<string, ToolCallState[]>,
+): Record<string, ToolCallState[]> {
+  const next: Record<string, ToolCallState[]> = {};
+
+  for (const [messageId, calls] of Object.entries(toolCalls)) {
+    next[messageId] = calls.map((call) =>
+      call.isLoading
+        ? {
+            ...call,
+            isLoading: false,
+          }
+        : call,
+    );
+  }
+
+  return next;
 }
 
 const INITIAL_STATE: SessionStoreState = {
@@ -141,10 +161,18 @@ export const useSessionStore = create<SessionStoreState & SessionStoreActions>()
     }),
 
   addRound: (round) =>
-    set((state) => ({
-      rounds: [...state.rounds, round],
-      currentRound: round.roundNumber,
-    })),
+    set((state) => {
+      const existingIndex = state.rounds.findIndex((item) => item.roundId === round.roundId);
+      const rounds =
+        existingIndex >= 0
+          ? state.rounds.map((item, index) => (index === existingIndex ? round : item))
+          : [...state.rounds, round];
+
+      return {
+        rounds,
+        currentRound: Math.max(state.currentRound, round.roundNumber),
+      };
+    }),
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   endRound: (_roundId: string) => {
@@ -152,11 +180,22 @@ export const useSessionStore = create<SessionStoreState & SessionStoreActions>()
   },
 
   updateStatus: (update) =>
-    set((state) => ({
-      sessionStatus: update.status as SessionStatus,
-      currentRound: update.currentRound ?? state.currentRound,
-      totalCostUsd: update.totalCostUsd ?? state.totalCostUsd,
-    })),
+    set((state) => {
+      const nextRound =
+        update.currentRound !== undefined
+          ? Math.max(state.currentRound, update.currentRound)
+          : state.currentRound;
+      const nextStatus = update.status as SessionStatus;
+      const isRunning = nextStatus === SESSION_STATUS.RUNNING;
+
+      return {
+        sessionStatus: nextStatus,
+        currentRound: nextRound,
+        totalCostUsd: update.totalCostUsd ?? state.totalCostUsd,
+        streamingAgentIds: isRunning ? state.streamingAgentIds : new Set(),
+        toolCalls: isRunning ? state.toolCalls : markToolCallsAsCompleted(state.toolCalls),
+      };
+    }),
 
   addToolStart: (messageId, agentId, tool, query) =>
     set((state) => ({

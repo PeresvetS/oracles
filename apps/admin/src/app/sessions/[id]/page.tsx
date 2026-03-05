@@ -196,6 +196,23 @@ export default function SessionPage() {
     return map;
   }, [rounds]);
 
+  const orderedMessages = useMemo(() => {
+    return messages
+      .map((message, index) => ({
+        message,
+        index,
+        roundNumber: roundMap.get(message.roundId)?.roundNumber ?? Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => {
+        if (a.roundNumber !== b.roundNumber) {
+          return a.roundNumber - b.roundNumber;
+        }
+
+        return a.index - b.index;
+      })
+      .map((item) => item.message);
+  }, [messages, roundMap]);
+
   // Актуальный статус: из WS или из REST
   const currentStatus: SessionStatus = storeStatus ?? session?.status ?? SESSION_STATUS.CONFIGURING;
   const currentRound = storeCurrentRound > 0 ? storeCurrentRound : (session?.currentRound ?? 0);
@@ -254,7 +271,7 @@ export default function SessionPage() {
   const renderedMessages: React.ReactNode[] = [];
   let lastRoundId: string | null = null;
 
-  for (const msg of messages) {
+  for (const msg of orderedMessages) {
     if (msg.roundId !== lastRoundId) {
       const round = roundMap.get(msg.roundId);
       if (round) {

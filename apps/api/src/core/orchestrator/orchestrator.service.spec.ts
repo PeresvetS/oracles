@@ -260,7 +260,7 @@ describe('OrchestratorService', () => {
       // INITIAL + 1 DISCUSSION + SCORING + FINAL = 4 раунда
       expect(roundManager.createRound).toHaveBeenCalledTimes(4);
       expect(roundManager.completeRound).toHaveBeenCalledTimes(4);
-      expect(agentRunner.runAgent).toHaveBeenCalledTimes(10);
+      expect(agentRunner.runAgent).toHaveBeenCalledTimes(11);
       expect(roundManager.clearSummaryCache).toHaveBeenCalledWith('session-1');
       expect(eventEmitter.emitSessionCompleted).toHaveBeenCalledWith('session-1');
       expect(prismaService.session.update).toHaveBeenCalledWith(
@@ -387,21 +387,23 @@ describe('OrchestratorService', () => {
       );
     });
 
-    it('в DISCUSSION раунде сначала запускает аналитиков, затем Директора', async () => {
+    it('в DISCUSSION раунде запускает: Директор (задача) → Аналитики → Директор (решение)', async () => {
       const session = createMockSession({ maxRounds: 2 });
       prismaService.session.findUnique.mockResolvedValue(session);
 
       await service.startSession('session-1');
 
       // INITIAL: 1 director + 2 analysts + 1 director = 4 вызова
-      // DISCUSSION round #2: затем 2 analysts, потом director
-      const discussionFirstCall = agentRunner.runAgent.mock.calls[4]?.[0];
-      const discussionSecondCall = agentRunner.runAgent.mock.calls[5]?.[0];
-      const discussionDirectorCall = agentRunner.runAgent.mock.calls[6]?.[0];
+      // DISCUSSION round #2: director task, 2 analysts, director decision
+      const discussionDirectorTaskCall = agentRunner.runAgent.mock.calls[4]?.[0];
+      const discussionFirstAnalystCall = agentRunner.runAgent.mock.calls[5]?.[0];
+      const discussionSecondAnalystCall = agentRunner.runAgent.mock.calls[6]?.[0];
+      const discussionDirectorDecisionCall = agentRunner.runAgent.mock.calls[7]?.[0];
 
-      expect(discussionFirstCall?.agent.role).toBe(AGENT_ROLE.ANALYST);
-      expect(discussionSecondCall?.agent.role).toBe(AGENT_ROLE.ANALYST);
-      expect(discussionDirectorCall?.agent.role).toBe(AGENT_ROLE.DIRECTOR);
+      expect(discussionDirectorTaskCall?.agent.role).toBe(AGENT_ROLE.DIRECTOR);
+      expect(discussionFirstAnalystCall?.agent.role).toBe(AGENT_ROLE.ANALYST);
+      expect(discussionSecondAnalystCall?.agent.role).toBe(AGENT_ROLE.ANALYST);
+      expect(discussionDirectorDecisionCall?.agent.role).toBe(AGENT_ROLE.DIRECTOR);
     });
 
     it('должен установить status=ERROR при критической ошибке', async () => {
@@ -429,7 +431,7 @@ describe('OrchestratorService', () => {
       agentRunner.runAgent.mockImplementation(({ agent }: { agent: { role: string } }) => {
         if (agent.role === AGENT_ROLE.DIRECTOR) {
           directorDiscussionCall += 1;
-          if (directorDiscussionCall === 3) {
+          if (directorDiscussionCall === 4) {
             return Promise.resolve({
               ...mockAgentResult,
               content: 'Нужен ресерч',
@@ -448,7 +450,7 @@ describe('OrchestratorService', () => {
           data: { type: 'RESEARCH' },
         }),
       );
-      expect(agentRunner.runAgent).toHaveBeenCalledTimes(10);
+      expect(agentRunner.runAgent).toHaveBeenCalledTimes(11);
     });
 
     it('должен прервать discussion loop при PAUSED', async () => {
@@ -522,6 +524,18 @@ describe('OrchestratorService', () => {
 
       expect(ideasService.findActiveForScoring).toHaveBeenCalledWith('session-1');
     });
+
+    it('не должен запускать второй startSession для той же сессии при активном loop', async () => {
+      const internalService = service as unknown as {
+        activeSessionRuns: Set<string>;
+      };
+      internalService.activeSessionRuns.add('session-1');
+
+      await service.startSession('session-1');
+
+      expect(prismaService.session.findUnique).not.toHaveBeenCalled();
+      expect(roundManager.createRound).not.toHaveBeenCalled();
+    });
   });
 
   describe('pauseSession', () => {
@@ -587,6 +601,18 @@ describe('OrchestratorService', () => {
           data: { status: SESSION_STATUS.ERROR },
         }),
       );
+    });
+
+    it('не должен запускать второй resumeSession для той же сессии при активном loop', async () => {
+      const internalService = service as unknown as {
+        activeSessionRuns: Set<string>;
+      };
+      internalService.activeSessionRuns.add('session-1');
+
+      await service.resumeSession('session-1');
+
+      expect(prismaService.session.findUnique).not.toHaveBeenCalled();
+      expect(roundManager.createRound).not.toHaveBeenCalled();
     });
   });
 

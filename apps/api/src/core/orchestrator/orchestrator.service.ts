@@ -5,7 +5,9 @@ import {
   AGENT_ROLE,
   MESSAGE_ROLE,
   SESSION_LIMITS,
+  SESSION_MODE,
   type ChatMessage,
+  type SessionMode,
   type ToolDefinition,
 } from '@oracle/shared';
 import { PrismaService } from '@prisma/prisma.service';
@@ -17,6 +19,7 @@ import {
   SCORING_INSTRUCTION,
   FINAL_INSTRUCTION,
   TOOL_NAMES,
+  DISCUSSION_DIRECTOR_TASK_INSTRUCTION,
   DISCUSSION_DIRECTOR_DECISION_INSTRUCTION,
 } from '@core/orchestrator/constants/orchestrator.constants';
 import type {
@@ -42,17 +45,23 @@ const MIN_ANALYSTS_FOR_START = SESSION_LIMITS.MIN_ANALYSTS;
 const INITIAL_DIRECTOR_TASK_INSTRUCTION = [
   'Сформулируй ЧЁТКОЕ задание для аналитиков на этот раунд.',
   'Учитывай все вводные и фильтры сессии.',
+  'Если режим сессии VALIDATE — разрешено только валидировать existingIdeas, без генерации нового пула.',
   'Не предлагай собственные идеи и НЕ вызывай call_researcher на этом шаге.',
 ].join(' ');
 
 /** Fallback-инструкция аналитикам, если в INITIAL ответ Директора пустой */
-const INITIAL_DIRECTOR_TASK_FALLBACK = [
+const ANALYST_TASK_FALLBACK_GENERATE = [
   'Технический fallback: Директор не сформулировал явное задание.',
-  'Работайте строго по вводным и фильтрам сессии, предложите 2-3 конкретные идеи.',
+  'Работайте строго по вводным и фильтрам текущей сессии.',
+  'Сформулируйте 2-3 конкретные гипотезы и аргументируйте каждую.',
 ].join(' ');
 
-/** Минимальная длина содержательного задания Директора в INITIAL */
-const INITIAL_DIRECTOR_TASK_MIN_LENGTH = 60;
+/** Fallback-инструкция аналитикам в VALIDATE, если задание Директора пустое */
+const ANALYST_TASK_FALLBACK_VALIDATE = [
+  'Технический fallback: Директор не сформулировал явное задание.',
+  'КРИТИЧЕСКОЕ ПРАВИЛО: режим VALIDATE. Не генерируй новый список идей.',
+  'Разбирай только existingIdeas и вводные пользователя, фиксируй слабые места и улучшения.',
+].join(' ');
 
 /** Результат выполнения discussion loop */
 type DiscussionLoopResult = 'completed' | 'paused';
@@ -78,6 +87,7 @@ type SessionAgent = SessionWithAgents['agents'][number];
 export class OrchestratorService {
   private readonly logger = new Logger(OrchestratorService.name);
   private readonly pausingSessions = new Set<string>();
+  private readonly activeSessionRuns = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -98,6 +108,10 @@ export class OrchestratorService {
    * @throws Error при невалидном состоянии (неверный статус, нет агентов)
    */
   async startSession(sessionId: string): Promise<void> {
+    if (!this.acquireSessionRun(sessionId, 'start')) {
+      return;
+    }
+
     this.pausingSessions.delete(sessionId);
 
     try {
@@ -143,6 +157,7 @@ export class OrchestratorService {
       await this.failSession(sessionId, errorMessage);
     } finally {
       this.pausingSessions.delete(sessionId);
+      this.releaseSessionRun(sessionId);
     }
   }
 
@@ -165,6 +180,10 @@ export class OrchestratorService {
    * Если передано сообщение — обрабатывает его как USER_INITIATED раунд перед продолжением.
    */
   async resumeSession(sessionId: string, message?: string): Promise<void> {
+    if (!this.acquireSessionRun(sessionId, 'resume')) {
+      return;
+    }
+
     this.pausingSessions.delete(sessionId);
 
     try {
@@ -192,6 +211,7 @@ export class OrchestratorService {
       await this.failSession(sessionId, errorMessage);
     } finally {
       this.pausingSessions.delete(sessionId);
+      this.releaseSessionRun(sessionId);
     }
   }
 
@@ -336,7 +356,13 @@ export class OrchestratorService {
         const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
         const analystMessages = this.hasUsableDirectorTask(directorResult.content)
           ? context
-          : [...context, { role: 'system' as const, content: INITIAL_DIRECTOR_TASK_FALLBACK }];
+          : [
+              ...context,
+              {
+                role: 'system' as const,
+                content: this.buildAnalystFallbackInstruction(session.mode),
+              },
+            ];
         return this.runAgentWithLogging('INITIAL.ANALYST', {
           agent: analyst,
           messages: analystMessages,
@@ -405,12 +431,47 @@ export class OrchestratorService {
         type: round.type,
       });
 
+      // Директор задаёт фокус раунда (без call_researcher на этапе постановки задачи)
+      const directorTaskContext = await this.roundManager.buildAgentContext(
+        director,
+        session,
+        round.number,
+      );
+      const directorTaskMessages: ChatMessage[] = [
+        ...directorTaskContext,
+        { role: 'user', content: DISCUSSION_DIRECTOR_TASK_INSTRUCTION },
+      ];
+      const directorTaskResult = await this.runAgentWithLogging('DISCUSSION.DIRECTOR_TASK', {
+        agent: director,
+        messages: directorTaskMessages,
+        sessionId: session.id,
+        roundId: round.id,
+        tools: this.buildTools(director, { allowResearcherCall: false }),
+        session,
+      });
+
+      if (await this.shouldPause(session.id)) {
+        this.logger.log(
+          `[${session.id}] Пауза после постановки задачи Директором в раунде ${round.number}`,
+        );
+        return 'paused';
+      }
+
       const analystResults = await Promise.allSettled(
         analysts.map(async (analyst) => {
           const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
+          const analystMessages = this.hasUsableDirectorTask(directorTaskResult.content)
+            ? context
+            : [
+                ...context,
+                {
+                  role: 'system' as const,
+                  content: this.buildAnalystFallbackInstruction(session.mode),
+                },
+              ];
           return this.runAgentWithLogging('DISCUSSION.ANALYST', {
             agent: analyst,
-            messages: context,
+            messages: analystMessages,
             sessionId: session.id,
             roundId: round.id,
             tools: this.buildTools(analyst),
@@ -869,7 +930,29 @@ export class OrchestratorService {
   }
 
   private hasUsableDirectorTask(content: string): boolean {
-    return content.trim().length >= INITIAL_DIRECTOR_TASK_MIN_LENGTH;
+    return content.trim().length > 0;
+  }
+
+  private buildAnalystFallbackInstruction(mode: SessionMode): string {
+    return mode === SESSION_MODE.VALIDATE
+      ? ANALYST_TASK_FALLBACK_VALIDATE
+      : ANALYST_TASK_FALLBACK_GENERATE;
+  }
+
+  private acquireSessionRun(sessionId: string, source: 'start' | 'resume'): boolean {
+    if (this.activeSessionRuns.has(sessionId)) {
+      this.logger.warn(
+        `[${sessionId}] Пропуск ${source}: уже выполняется другой оркестраторный цикл`,
+      );
+      return false;
+    }
+
+    this.activeSessionRuns.add(sessionId);
+    return true;
+  }
+
+  private releaseSessionRun(sessionId: string): void {
+    this.activeSessionRuns.delete(sessionId);
   }
 
   private async shouldPause(sessionId: string): Promise<boolean> {

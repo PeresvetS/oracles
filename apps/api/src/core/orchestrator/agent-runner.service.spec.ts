@@ -495,6 +495,49 @@ describe('AgentRunnerService', () => {
       expect(llmGateway.chat).not.toHaveBeenCalled();
     });
 
+    it('должен ограничивать call_researcher до 1 вызова на весь ход агента', async () => {
+      llmGateway.chatStream
+        .mockImplementationOnce(() =>
+          mockStream([
+            {
+              type: 'tool_call',
+              toolCall: {
+                id: 'tc-1',
+                type: 'function',
+                function: { name: 'call_researcher', arguments: '{"query":"рынок 1"}' },
+              },
+            },
+            { type: 'done', usage: { tokensInput: 40, tokensOutput: 15, costUsd: 0.004 } },
+          ]),
+        )
+        .mockImplementationOnce(() =>
+          mockStream([
+            {
+              type: 'tool_call',
+              toolCall: {
+                id: 'tc-2',
+                type: 'function',
+                function: { name: 'call_researcher', arguments: '{"query":"рынок 2"}' },
+              },
+            },
+            { type: 'done', usage: { tokensInput: 35, tokensOutput: 10, costUsd: 0.0035 } },
+          ]),
+        )
+        .mockImplementationOnce(() =>
+          mockStream([
+            { type: 'text', text: 'Итог после тулзов' },
+            { type: 'done', usage: { tokensInput: 30, tokensOutput: 20, costUsd: 0.003 } },
+          ]),
+        );
+
+      const result = await service.runAgent(directorParams);
+
+      // Ресерчер вызывается только один раз, второй tool call блокируется per-turn лимитом
+      expect(llmGateway.chat).toHaveBeenCalledTimes(1);
+      expect(result.toolCalls).toHaveLength(2);
+      expect(result.toolCalls[1].result).toContain('Допустим только 1 вызов ресерчера за один ход');
+    });
+
     it('должен вернуть ошибку если ресерчер не назначен в сессии', async () => {
       const paramsNoResearcher = {
         ...directorParams,

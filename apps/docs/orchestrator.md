@@ -31,6 +31,8 @@ SessionsService.start(id)
     ▼
 OrchestratorService.startSession(sessionId)
     │
+    ├── acquire run-lock (1 активный оркестраторный цикл на sessionId)
+    │
     ├── Валидация: status=RUNNING, 1 Director + ≥2 Analysts
     │
     ├── INITIAL раунд:
@@ -41,14 +43,15 @@ OrchestratorService.startSession(sessionId)
     │
     ├── DISCUSSION LOOP (while currentRound < maxRounds):
     │   1. Проверка флага паузы/статуса PAUSED перед каждым новым раундом
-    │   2. Аналитики параллельно (Promise.allSettled) дают ответы по текущему фокусу
-    │   3. После ответов аналитиков идеи снова парсятся и добавляются в пул сессии
-    │   4. Директор получает ответы аналитиков и принимает решение:
+    │   2. Директор формулирует задание на раунд (без call_researcher на этом шаге)
+    │   3. Аналитики параллельно (Promise.allSettled) дают ответы по текущему фокусу
+    │   4. После ответов аналитиков идеи снова парсятся и добавляются в пул сессии
+    │   5. Директор получает ответы аналитиков и принимает решение:
     │      - сигнал финализации? → break
     │      - вызван call_researcher? → раунд помечается как RESEARCH, переход к следующему раунду
     │      - иначе → CONTINUE (следующий DISCUSSION раунд)
-    │   5. После каждого хода (Аналитики/Директор) повторная проверка паузы
-    │   6. currentRound обновляется только после завершения раунда
+    │   6. После каждого хода (Директор/Аналитики/Директор) повторная проверка паузы
+    │   7. currentRound обновляется только после завершения раунда
     │
     ├── SCORING раунд:
     │   Каждый аналитик оценивает идеи по ICE/RICE
@@ -65,6 +68,7 @@ Pause/Resume:
     SessionsService.resume() → DB status=RUNNING → OrchestratorService.resumeSession()
     → если есть message: Message(USER) в текущий раунд + отдельный ответ Директора
     → continueFromDiscussionLoop()
+    → если для этой сессии уже есть активный run-loop, новый resume-loop не запускается (защита от дублей раундов)
 
 User Message:
     SessionsService.sendMessage() → OrchestratorService.handleUserMessage()
@@ -81,7 +85,7 @@ User Message:
 |-------|----------|
 | `startSession(sessionId)` | Полный цикл: INITIAL → DISCUSSION → SCORING → FINAL → COMPLETED |
 | `pauseSession(sessionId)` | Выставляет in-memory флаг паузы и эмитит событие PAUSED |
-| `resumeSession(sessionId, message?)` | Сбрасывает флаг паузы, опционально добавляет user message в текущий раунд, затем продолжает цикл |
+| `resumeSession(sessionId, message?)` | Сбрасывает флаг паузы, опционально добавляет user message в текущий раунд, затем продолжает цикл (если не активен другой run-loop) |
 | `handleUserMessage(sessionId, content)` | USER_INITIATED раунд, не расходует лимит раундов |
 | `containsFinalizationSignal(content)` | Проверка ключевых слов финализации Директора |
 
@@ -115,7 +119,7 @@ User Message:
 - `call_researcher` → проверка лимита → PerplexityProvider → отдельное Message ресерчера → increment researchCallsUsed
 - `annotations` от OpenRouter web plugin (`webSearchEnabled=true`) → эмит `agent:tool:result` + сохранение в `Message.toolCalls` с `query: "openrouter:web_plugin"`
 - Токены суммируются по всем итерациям
-- `call_researcher` ограничен до 1 вызова в рамках одного хода агента (защита от «research loop»)
+- `call_researcher` ограничен до 1 вызова в рамках одного хода агента (на весь tool-loop, а не на одну итерацию)
 
 **buildToolDefinitions:**
 - `web_search` — НЕ добавляется как явный tool_call (включается через `webSearchEnabled` и OpenRouter plugin)
@@ -138,7 +142,7 @@ User Message:
 
 ```
 [0] system: обработанный системный промпт (processPrompt с {{SESSION_FILTERS}}, {{INPUT_PROMPT}}, etc.)
-[1] system: контекст сессии (режим + вводные)
+[1] system: контекст сессии (режим + вводные; в VALIDATE включает existingIdeas и запрет генерации нового пула)
 [?] system: саммари предыдущих раундов (только если round >= 3)
 [?] system: список активных идей PROPOSED/ACTIVE (если есть)
 [...] chat:  история сообщений с маппингом ролей
@@ -179,6 +183,7 @@ FINALIZATION_SIGNALS: ['ФИНАЛИЗИРУЮ', 'ФИНАЛЬНЫЙ ОТЧЁТ'
 // Tool definitions
 CALL_RESEARCHER_TOOL_DEFINITION  — JSON Schema для call_researcher (параметр: query)
 TOOL_NAMES = { WEB_SEARCH: 'web_search', CALL_RESEARCHER: 'call_researcher' }
+DISCUSSION_DIRECTOR_TASK_INSTRUCTION — инструкция Директору на постановку задачи в DISCUSSION
 DISCUSSION_DIRECTOR_DECISION_INSTRUCTION — короткая инструкция Директору в фазе арбитража (формат решения + ограничение на шум)
 
 // Сообщения

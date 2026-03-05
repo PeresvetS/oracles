@@ -3,6 +3,7 @@
 import { cn, formatCost } from '@/lib/utils';
 import { MESSAGE_ROLE } from '@/types/index';
 import { ToolCallDisplay } from '@/components/chat/tool-call-display';
+import { MarkdownContent } from '@/components/chat/markdown-content';
 import { useI18n } from '@/i18n/context';
 import type { MessageWithAgent, StreamingMessage } from '@/types/index';
 
@@ -142,9 +143,9 @@ export function MessageBubble({ message, agentColor = 'gray', toolCalls }: Messa
         </div>
       )}
 
-      {/* Контент с мигающим курсором при стриминге */}
-      <div className="whitespace-pre-wrap text-sm leading-relaxed">
-        {normalized.content}
+      {/* Контент с markdown-разметкой и мигающим курсором при стриминге */}
+      <div className="text-sm leading-relaxed">
+        <MarkdownContent content={normalized.content} />
         {normalized.isStreaming && (
           <span className="ml-0.5 inline-block animate-pulse text-muted-foreground">▌</span>
         )}

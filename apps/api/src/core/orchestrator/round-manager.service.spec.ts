@@ -212,6 +212,29 @@ describe('RoundManagerService', () => {
       expect(result[1].content).toContain('Генерация идей');
     });
 
+    it('в режиме VALIDATE должен включать existingIdeas и запрет генерации нового пула', async () => {
+      const validateSession = {
+        ...mockSession,
+        mode: 'VALIDATE',
+        existingIdeas: JSON.stringify([
+          'Идея A: AI-помощник для саппорта',
+          'Идея B: Мониторинг цен конкурентов',
+        ]),
+      } as SessionWithAgents;
+
+      const result = await service.buildAgentContext(mockAnalyst, validateSession, 1);
+      const sessionContext = result[1];
+
+      expect(sessionContext.role).toBe('system');
+      expect(sessionContext.content).toContain('Валидация существующих идей');
+      expect(sessionContext.content).toContain(
+        'КРИТИЧЕСКОЕ ПРАВИЛО: в режиме VALIDATE не генерируй новый список идей с нуля.',
+      );
+      expect(sessionContext.content).toContain('existingIdeas для валидации');
+      expect(sessionContext.content).toContain('Идея A: AI-помощник для саппорта');
+      expect(sessionContext.content).toContain('Идея B: Мониторинг цен конкурентов');
+    });
+
     it('должен вернуть полный контекст для round < CONTEXT_SUMMARIZE_FROM_ROUND', async () => {
       const messages = [
         {

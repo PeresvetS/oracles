@@ -42,6 +42,7 @@ export function SessionControls({
   const { t } = useI18n();
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [addRoundsOpen, setAddRoundsOpen] = useState(false);
   const [newMaxRounds, setNewMaxRounds] = useState(maxRounds + 1);
@@ -52,37 +53,43 @@ export function SessionControls({
   const canSendMessage = status !== SESSION_STATUS.CONFIGURING;
 
   const handlePause = useCallback(async () => {
+    setIsStatusUpdating(true);
     try {
       await api.post(`/api/sessions/${sessionId}/pause`);
       onStatusChange?.();
     } catch {
       toast.error(t.errors.generic);
+    } finally {
+      setIsStatusUpdating(false);
     }
   }, [sessionId, onStatusChange, t]);
 
   const handleResume = useCallback(async () => {
+    setIsStatusUpdating(true);
     try {
       await api.post<unknown>(`/api/sessions/${sessionId}/resume`, {});
       onStatusChange?.();
     } catch {
       toast.error(t.errors.generic);
+    } finally {
+      setIsStatusUpdating(false);
     }
   }, [sessionId, onStatusChange, t]);
 
   const handleStop = useCallback(async () => {
+    setIsStatusUpdating(true);
     try {
       if (isRunning) {
         await api.post(`/api/sessions/${sessionId}/pause`);
       }
-      await api.post<unknown>(`/api/sessions/${sessionId}/resume`, {
-        message: t.session.stopFinalizeInstruction,
-      });
       setShowStopConfirm(false);
       onStatusChange?.();
     } catch {
       toast.error(t.errors.generic);
+    } finally {
+      setIsStatusUpdating(false);
     }
-  }, [isRunning, sessionId, onStatusChange, t]);
+  }, [isRunning, sessionId, onStatusChange, t.errors.generic]);
 
   const handleSendMessage = useCallback(async () => {
     const trimmed = message.trim();
@@ -147,6 +154,7 @@ export function SessionControls({
           <Button
             size="sm"
             variant="outline"
+            disabled={isStatusUpdating}
             onClick={() => {
               void handlePause();
             }}
@@ -158,6 +166,7 @@ export function SessionControls({
           <Button
             size="sm"
             variant="outline"
+            disabled={isStatusUpdating}
             onClick={() => {
               void handleResume();
             }}
@@ -166,7 +175,12 @@ export function SessionControls({
           </Button>
         )}
         {isActive && !showStopConfirm && (
-          <Button size="sm" variant="destructive" onClick={() => setShowStopConfirm(true)}>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={isStatusUpdating}
+            onClick={() => setShowStopConfirm(true)}
+          >
             {t.session.stopButton}
           </Button>
         )}

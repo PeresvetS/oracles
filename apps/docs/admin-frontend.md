@@ -250,6 +250,11 @@ const { addMessage, appendToMessage } = useSessionStore.getState();
 **Не персистируется** — сбрасывается при уходе со страницы сессии.
 
 **Защита от дубликатов**: `addMessage` проверяет `id` перед добавлением (защита от race condition REST ↔ WS).
+`addRound` дедуплицирует события по `roundId`, чтобы при реконнекте не копить дубликаты.
+
+При `session:status` в статусах `PAUSED/COMPLETED/ERROR` store принудительно очищает `streamingAgentIds` и закрывает `isLoading` у tool calls, чтобы в UI не зависали индикаторы «думает...».
+
+Кнопка `Stop` в `session-controls` выполняет **жёсткую остановку в паузу** (`POST /api/sessions/:id/pause`) без авто-`resume`, чтобы не запускать параллельные оркестрации.
 
 ## Хуки данных
 

@@ -32,6 +32,10 @@ interface SummaryCacheEntry {
   summary: string;
 }
 
+/** Текст-заглушка, если в VALIDATE не передан отдельный список идей */
+const VALIDATE_IDEAS_MISSING_TEXT =
+  'Список existingIdeas не передан. Валидируй только то, что явно указано во вводных пользователя.';
+
 /**
  * Сервис управления раундами.
  *
@@ -124,7 +128,7 @@ export class RoundManagerService {
     // 1. Обработанный системный промпт
     const promptContext = {
       inputPrompt: session.inputPrompt,
-      existingIdeas: session.existingIdeas,
+      existingIdeas: this.formatExistingIdeasText(session.existingIdeas),
       filters: (session.filters ?? {}) as SessionFilters,
     };
     const processedPrompt = this.promptsService.processPrompt(agent.systemPrompt, promptContext);
@@ -217,8 +221,55 @@ export class RoundManagerService {
 
   /** Форматировать контекст сессии: режим + вводные */
   private formatSessionContext(session: SessionWithAgents): string {
-    const modeLabel = session.mode === SESSION_MODE.GENERATE ? 'Генерация идей' : 'Валидация идей';
-    return `Режим: ${modeLabel}\nВводные: ${session.inputPrompt}`;
+    const modeLabel =
+      session.mode === SESSION_MODE.GENERATE ? 'Генерация идей' : 'Валидация существующих идей';
+    const lines: string[] = [`Режим: ${modeLabel}`, `Вводные: ${session.inputPrompt}`];
+
+    if (session.mode === SESSION_MODE.VALIDATE) {
+      const existingIdeas = this.parseExistingIdeas(session.existingIdeas);
+      lines.push('КРИТИЧЕСКОЕ ПРАВИЛО: в режиме VALIDATE не генерируй новый список идей с нуля.');
+      lines.push(
+        'Работай только с идеями из блока existingIdeas ниже или из вводных пользователя.',
+      );
+
+      if (existingIdeas.length > 0) {
+        lines.push('existingIdeas для валидации:');
+        lines.push(...existingIdeas.map((idea, index) => `${index + 1}. ${idea}`));
+      } else {
+        lines.push(VALIDATE_IDEAS_MISSING_TEXT);
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  private formatExistingIdeasText(existingIdeasRaw: string | null): string {
+    const ideas = this.parseExistingIdeas(existingIdeasRaw);
+    if (ideas.length === 0) {
+      return 'Нет существующих идей';
+    }
+
+    return ideas.map((idea, index) => `${index + 1}. ${idea}`).join('\n');
+  }
+
+  private parseExistingIdeas(existingIdeasRaw: string | null): string[] {
+    if (!existingIdeasRaw) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(existingIdeasRaw) as unknown;
+      if (!Array.isArray(parsed)) {
+        return [existingIdeasRaw.trim()].filter((idea) => idea.length > 0);
+      }
+
+      return parsed
+        .filter((idea): idea is string => typeof idea === 'string')
+        .map((idea) => idea.trim())
+        .filter((idea) => idea.length > 0);
+    } catch {
+      return [existingIdeasRaw.trim()].filter((idea) => idea.length > 0);
+    }
   }
 
   /**

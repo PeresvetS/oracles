@@ -186,6 +186,7 @@ export class AgentRunnerService {
 
     let currentMessages: ChatMessage[] = [...params.messages];
     const accumulatedToolCalls: ToolCallResult[] = [];
+    let researchCallsUsedInTurn = 0;
     let totalTokensInput = 0;
     let totalTokensOutput = 0;
     let totalCostUsd = 0;
@@ -247,12 +248,14 @@ export class AgentRunnerService {
           params,
           iterResult.content,
           messageId,
+          researchCallsUsedInTurn,
           iterResult.reasoning_details,
         );
 
         // Добавляем результаты в историю сообщений для следующей итерации
         currentMessages = [...currentMessages, ...toolResults.messages];
         accumulatedToolCalls.push(...toolResults.results);
+        researchCallsUsedInTurn = toolResults.researchCallsUsedInTurn;
 
         this.logger.debug(
           `[${sessionId}] Агент ${agent.name}: итерация tool loop ${iteration + 1}, tool calls: ${iterResult.toolCalls.length}`,
@@ -468,11 +471,16 @@ export class AgentRunnerService {
     params: RunAgentParams,
     assistantContent: string,
     messageId: string,
+    initialResearchCallsUsed: number,
     reasoningDetails?: ReasoningDetail[],
-  ): Promise<{ messages: ChatMessage[]; results: ToolCallResult[] }> {
+  ): Promise<{
+    messages: ChatMessage[];
+    results: ToolCallResult[];
+    researchCallsUsedInTurn: number;
+  }> {
     const newMessages: ChatMessage[] = [];
     const results: ToolCallResult[] = [];
-    let researchCallsInTurn = 0;
+    let researchCallsUsedInTurn = initialResearchCallsUsed;
 
     // Добавить assistant message с tool_calls (формат OpenAI)
     // reasoning_details передаются для сохранения multi-turn continuity с thinking-моделями
@@ -502,13 +510,13 @@ export class AgentRunnerService {
 
       let result: string;
       if (toolCall.function.name === TOOL_NAMES.CALL_RESEARCHER) {
-        if (researchCallsInTurn >= MAX_RESEARCH_CALLS_PER_TURN) {
+        if (researchCallsUsedInTurn >= MAX_RESEARCH_CALLS_PER_TURN) {
           this.logger.warn(
             `[${params.sessionId}] Агент ${params.agent.name}: превышен лимит call_researcher за один ход (${MAX_RESEARCH_CALLS_PER_TURN})`,
           );
           result = RESEARCH_PER_TURN_LIMIT_MESSAGE;
         } else {
-          researchCallsInTurn += 1;
+          researchCallsUsedInTurn += 1;
           result = await this.executeTool(toolCall, query, params);
         }
       } else {
@@ -535,7 +543,7 @@ export class AgentRunnerService {
       });
     }
 
-    return { messages: newMessages, results };
+    return { messages: newMessages, results, researchCallsUsedInTurn };
   }
 
   /**
