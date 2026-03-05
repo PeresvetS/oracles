@@ -68,13 +68,16 @@ export function ApiKeysForm() {
   }, [settings]);
 
   const handleSave = async (settingKey: string): Promise<void> => {
-    const value = localValues[settingKey] ?? '';
-    if (!value.trim()) return;
+    const value = (localValues[settingKey] ?? '').trim();
+    if (!value) return;
 
     setSavingKeys((prev) => new Set(prev).add(settingKey));
     try {
       await api.patch('/api/settings', { [settingKey]: value });
-      await queryClient.invalidateQueries({ queryKey: ['settings'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['models'] }),
+      ]);
       // Сбрасываем локальное значение после успешного сохранения
       setLocalValues((prev) => ({ ...prev, [settingKey]: '' }));
       toast.success(t.admin.apiKeysSaved);

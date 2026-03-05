@@ -48,6 +48,6 @@ export class ModelsService {
     if (!settingKey) return false;
 
     const apiKey = this.settingsService.get(settingKey);
-    return apiKey !== null && apiKey.length > 0;
+    return apiKey !== null && apiKey.trim().length > 0;
   }
 }

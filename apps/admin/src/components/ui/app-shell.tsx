@@ -200,7 +200,7 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-dvh min-h-0 bg-background">
       {/* Сайдбар: десктоп (в потоке) */}
       <aside className="hidden w-56 shrink-0 flex-col border-r bg-card lg:flex">
         <SidebarContent />
@@ -222,7 +222,7 @@ export function AppShell({ children }: AppShellProps) {
       )}
 
       {/* Основной контент */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Мобильный хедер */}
         <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-card px-4 lg:hidden">
           <Button
@@ -238,7 +238,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
 
         {/* Страница */}
-        <div className="flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {children}
         </div>
       </div>

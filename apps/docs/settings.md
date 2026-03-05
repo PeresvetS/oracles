@@ -55,9 +55,9 @@ src/settings/
 
 | Метод | Описание |
 |-------|----------|
-| `get(key): string \| null` | Синхронно из кэша → fallback на `process.env[KEY]` |
+| `get(key): string \| null` | Синхронно из кэша → fallback на `process.env[KEY]` (если в кэше пустая строка, тоже fallback на env) |
 | `set(key, value): Promise<void>` | Upsert в БД + обновление кэша |
-| `getAll(): Promise<Record<string, string>>` | Все настройки из кэша |
+| `getAll(): Promise<Record<string, string>>` | Все настройки из кэша + env fallback для известных ключей (пустые значения в БД игнорируются) |
 | `getAllMasked(): Promise<Record<string, string>>` | Все настройки с маскированием API-ключей |
 | `reloadCache(): Promise<void>` | Принудительная перезагрузка кэша из БД |
 
@@ -65,6 +65,7 @@ src/settings/
 
 - Кэш (`Map<string, string>`) загружается в `onModuleInit()` из БД
 - `get()` — полностью синхронный, без обращения к БД
+- Если в БД для ключа сохранена пустая строка, сервис считает это «значение не задано» и использует env fallback
 - `set()` — upsert в БД + обновление Map, без полной перезагрузки
 - `reloadCache()` — полная перезагрузка (полезно после прямых изменений в БД)
 

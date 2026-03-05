@@ -49,10 +49,12 @@ export class SettingsService implements OnModuleInit {
    */
   get(key: string): string | null {
     const cached = this.cache.get(key);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined && cached.trim().length > 0) {
+      return cached;
+    }
 
     const envValue = process.env[key.toUpperCase()];
-    return envValue ?? null;
+    return envValue && envValue.trim().length > 0 ? envValue : null;
   }
 
   /**
@@ -60,12 +62,14 @@ export class SettingsService implements OnModuleInit {
    * Upsert в БД + обновление кэша.
    */
   async set(key: string, value: string): Promise<void> {
+    const normalizedValue = value.trim();
+
     await this.prisma.setting.upsert({
       where: { key },
-      update: { value },
-      create: { key, value },
+      update: { value: normalizedValue },
+      create: { key, value: normalizedValue },
     });
-    this.cache.set(key, value);
+    this.cache.set(key, normalizedValue);
   }
 
   /**
@@ -75,7 +79,9 @@ export class SettingsService implements OnModuleInit {
     const result: Record<string, string> = {};
 
     for (const [key, value] of this.cache.entries()) {
-      result[key] = value;
+      if (value.trim().length > 0) {
+        result[key] = value;
+      }
     }
 
     for (const key of KNOWN_SETTING_KEYS) {
@@ -84,7 +90,7 @@ export class SettingsService implements OnModuleInit {
       }
 
       const envValue = process.env[key.toUpperCase()];
-      if (envValue !== undefined) {
+      if (envValue !== undefined && envValue.trim().length > 0) {
         result[key] = envValue;
       }
     }
