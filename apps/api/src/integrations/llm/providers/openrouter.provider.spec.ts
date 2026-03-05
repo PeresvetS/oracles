@@ -338,12 +338,12 @@ describe('OpenRouterProvider', () => {
       expect(result).toBe('high');
     });
 
-    it('должен вернуть reasoningEffort из MODEL_REGISTRY для gpt-5.2-thinking', () => {
-      const params = { ...baseParams, modelId: 'openai/gpt-5.2-thinking' };
+    it('должен вернуть reasoningEffort из MODEL_REGISTRY для gpt-5.2', () => {
+      const params = { ...baseParams, modelId: 'openai/gpt-5.2' };
 
       const result = (provider as any).resolveReasoningEffort(params);
 
-      expect(result).toBe('medium');
+      expect(result).toBe('xhigh');
     });
 
     it('должен вернуть reasoningEffort из MODEL_REGISTRY для gpt-5.3-codex', () => {
@@ -351,7 +351,7 @@ describe('OpenRouterProvider', () => {
 
       const result = (provider as any).resolveReasoningEffort(params);
 
-      expect(result).toBe('medium');
+      expect(result).toBe('xhigh');
     });
 
     it('должен вернуть undefined для модели без reasoning', () => {
@@ -362,20 +362,20 @@ describe('OpenRouterProvider', () => {
       expect(result).toBeUndefined();
     });
 
-    it('должен добавлять reasoning: { effort } в запрос chat() для thinking-модели', async () => {
-      const thinkingParams = { ...baseParams, modelId: 'openai/gpt-5.2-thinking' };
+    it('должен добавлять reasoning: { enabled, effort } в запрос chat() для thinking-модели', async () => {
+      const thinkingParams = { ...baseParams, modelId: 'openai/gpt-5.2' };
 
       await provider.chat(thinkingParams);
 
       const callArgs = mockCreate.mock.calls[0][0] as Record<string, unknown>;
-      expect(callArgs).toHaveProperty('reasoning', { effort: 'medium' });
+      expect(callArgs).toHaveProperty('reasoning', { enabled: true, effort: 'xhigh' });
     });
 
-    it('не должен добавлять reasoning в запрос chat() для обычной модели', async () => {
+    it('должен добавлять reasoning: { enabled: true } для обычной модели', async () => {
       await provider.chat(baseParams);
 
       const callArgs = mockCreate.mock.calls[0][0] as Record<string, unknown>;
-      expect(callArgs).not.toHaveProperty('reasoning');
+      expect(callArgs).toHaveProperty('reasoning', { enabled: true });
     });
   });
 

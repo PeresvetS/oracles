@@ -37,15 +37,15 @@ export const MODEL_REGISTRY: Omit<ModelInfo, 'available'>[] = [
 
   // GPT family (через OpenRouter)
   {
-    id: 'openai/gpt-5.2-thinking',
-    name: 'GPT-5.2 Thinking',
+    id: 'openai/gpt-5.2',
+    name: 'GPT-5.2',
     provider: 'openrouter',
     family: 'gpt',
     costPer1kInput: 0.005,
     costPer1kOutput: 0.015,
     contextWindow: 128_000,
     capabilities: ['chat', 'reasoning', 'thinking', 'web_search'],
-    reasoningEffort: 'medium',
+    reasoningEffort: 'xhigh',
   },
   {
     id: 'openai/gpt-5.3-codex',
@@ -56,7 +56,7 @@ export const MODEL_REGISTRY: Omit<ModelInfo, 'available'>[] = [
     costPer1kOutput: 0.018,
     contextWindow: 128_000,
     capabilities: ['chat', 'code', 'reasoning', 'thinking', 'web_search'],
-    reasoningEffort: 'medium',
+    reasoningEffort: 'xhigh',
   },
   {
     id: 'openai/gpt-5.3-chat',
@@ -71,8 +71,8 @@ export const MODEL_REGISTRY: Omit<ModelInfo, 'available'>[] = [
 
   // Gemini family (через OpenRouter)
   {
-    id: 'google/gemini-3.1-pro',
-    name: 'Gemini 3.1 Pro',
+    id: 'google/gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro Preview',
     provider: 'openrouter',
     family: 'gemini',
     costPer1kInput: 0.00125,

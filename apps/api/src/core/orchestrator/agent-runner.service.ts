@@ -42,6 +42,13 @@ const EMPTY_RESULT: Omit<AgentRunnerResult, 'messageId'> = {
   toolCalls: [],
 };
 
+/** Лимит вызова ресерчера в рамках одного хода агента */
+const MAX_RESEARCH_CALLS_PER_TURN = 1;
+
+/** Сообщение для LLM, если в одном ходе запрошено слишком много call_researcher */
+const RESEARCH_PER_TURN_LIMIT_MESSAGE =
+  'Допустим только 1 вызов ресерчера за один ход. Сформулируй итог на основе уже полученных данных.';
+
 /** Аргументы тулзы, переданные от LLM */
 interface ToolArguments {
   query: string;
@@ -465,6 +472,7 @@ export class AgentRunnerService {
   ): Promise<{ messages: ChatMessage[]; results: ToolCallResult[] }> {
     const newMessages: ChatMessage[] = [];
     const results: ToolCallResult[] = [];
+    let researchCallsInTurn = 0;
 
     // Добавить assistant message с tool_calls (формат OpenAI)
     // reasoning_details передаются для сохранения multi-turn continuity с thinking-моделями
@@ -492,7 +500,20 @@ export class AgentRunnerService {
         query,
       });
 
-      const result = await this.executeTool(toolCall, query, params);
+      let result: string;
+      if (toolCall.function.name === TOOL_NAMES.CALL_RESEARCHER) {
+        if (researchCallsInTurn >= MAX_RESEARCH_CALLS_PER_TURN) {
+          this.logger.warn(
+            `[${params.sessionId}] Агент ${params.agent.name}: превышен лимит call_researcher за один ход (${MAX_RESEARCH_CALLS_PER_TURN})`,
+          );
+          result = RESEARCH_PER_TURN_LIMIT_MESSAGE;
+        } else {
+          researchCallsInTurn += 1;
+          result = await this.executeTool(toolCall, query, params);
+        }
+      } else {
+        result = await this.executeTool(toolCall, query, params);
+      }
 
       this.eventEmitter.emitToolResult(params.sessionId, {
         messageId,

@@ -34,7 +34,7 @@ OrchestratorService.startSession(sessionId)
     ├── Валидация: status=RUNNING, 1 Director + ≥2 Analysts
     │
     ├── INITIAL раунд:
-    │   1. Директор получает задание (inputPrompt) + tool definitions
+    │   1. Директор формирует ТЗ аналитикам (без call_researcher на этом шаге)
     │   2. Аналитики параллельно (Promise.allSettled) генерируют идеи
     │   3. Идеи из ответов аналитиков парсятся и сохраняются в Idea (dedupe по title)
     │   3. Директор повторно синтезирует ответы аналитиков в том же раунде
@@ -114,10 +114,12 @@ User Message:
 - `call_researcher` → проверка лимита → PerplexityProvider → отдельное Message ресерчера → increment researchCallsUsed
 - `annotations` от OpenRouter web plugin (`webSearchEnabled=true`) → эмит `agent:tool:result` + сохранение в `Message.toolCalls` с `query: "openrouter:web_plugin"`
 - Токены суммируются по всем итерациям
+- `call_researcher` ограничен до 1 вызова в рамках одного хода агента (защита от «research loop»)
 
 **buildToolDefinitions:**
 - `web_search` — НЕ добавляется как явный tool_call (включается через `webSearchEnabled` и OpenRouter plugin)
 - `call_researcher` — добавляется только для Директора (`isDirector = true`)
+- В OrchestratorService `call_researcher` отключён для фаз INITIAL/FINAL/RESUME/USER_INITIATED (роль Директора там — координация/синтез, не ресерч)
 
 ### RoundManagerService
 

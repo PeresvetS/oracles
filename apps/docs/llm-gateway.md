@@ -94,7 +94,7 @@ export interface LlmProvider {
 | Стриминг | `stream: true` + `stream_options: { include_usage: true }` |
 | Lazy client | Клиент создаётся при первом вызове, пересоздаётся при смене ключа |
 | Расчёт стоимости | По MODEL_REGISTRY: `(input/1000)*costPer1kInput + (output/1000)*costPer1kOutput` |
-| **Extended Thinking** | `reasoning: { effort }` — для GPT-5.2-thinking, GPT-5.3-codex (см. ниже) |
+| **Extended Thinking** | `reasoning: { enabled: true, effort? }` — reasoning включается для всех моделей, effort задаётся для thinking-моделей |
 
 **HTTP заголовки OpenRouter:**
 - `HTTP-Referer: https://oracle.besales.app`
@@ -134,16 +134,17 @@ export interface LlmProvider {
 
 #### Extended Thinking (Reasoning)
 
-Для моделей с extended thinking OpenRouter поддерживает нестандартное поле `reasoning: { effort: 'low' | 'medium' | 'high' }` в Chat Completions API.
+Для моделей с extended thinking OpenRouter поддерживает поле `reasoning`. В проекте reasoning включён для всех запросов OpenRouter (`enabled: true`), а для thinking-моделей дополнительно передаётся `effort`.
 
 **Как работает:**
 
 1. `OpenRouterProvider.resolveReasoningEffort(params)` определяет уровень effort:
    - Сначала из `params.reasoningEffort` (явное переопределение)
    - Затем из `MODEL_REGISTRY[modelId].reasoningEffort` (дефолт по модели)
-   - `undefined` — thinking не активируется
+   - `undefined` — отправляется `reasoning: { enabled: true }` без effort
 
-2. Если effort определён — добавляется `reasoning: { effort }` в запрос (через type casting, т.к. OpenAI SDK не типизирует это поле).
+2. В запрос всегда добавляется `reasoning: { enabled: true }`.
+   Если effort определён — добавляется `reasoning: { enabled: true, effort }` (через type casting, т.к. OpenAI SDK не типизирует это поле).
 
 3. В стриминге ответа: `delta.reasoning_details[]` → чанки типа `'reasoning'` в `AsyncGenerator<LlmStreamChunk>`.
 
@@ -155,8 +156,8 @@ export interface LlmProvider {
 
 | Модель | reasoningEffort | capabilities |
 |--------|----------------|-------------|
-| `openai/gpt-5.2-thinking` | `'medium'` | `['chat', 'reasoning', 'thinking', 'web_search']` |
-| `openai/gpt-5.3-codex` | `'medium'` | `['chat', 'code', 'reasoning', 'thinking', 'web_search']` |
+| `openai/gpt-5.2` | `'xhigh'` | `['chat', 'reasoning', 'thinking', 'web_search']` |
+| `openai/gpt-5.3-codex` | `'xhigh'` | `['chat', 'code', 'reasoning', 'thinking', 'web_search']` |
 
 **WebSocket событие `agent:thinking:chunk`:**
 ```json
@@ -196,7 +197,7 @@ export interface LlmProvider {
 | `ChatMessage` | `{ role: system/user/assistant/tool, content, tool_call_id?, tool_calls?, reasoning_details? }` |
 | `ToolDefinition` | `{ type: "function", function: { name, description, parameters } }` |
 | `ToolCall` | `{ id, type: "function", function: { name, arguments } }` |
-| `ReasoningEffort` | `'low' \| 'medium' \| 'high'` — уровень thinking для extended thinking моделей |
+| `ReasoningEffort` | `'none' \| 'minimal' \| 'low' \| 'medium' \| 'high' \| 'xhigh'` |
 | `ReasoningDetail` | `{ type: 'thinking' \| 'summary', text: string }` — блок reasoning из ответа |
 
 ## Конфигурация
@@ -264,9 +265,9 @@ for await (const chunk of this.llmGateway.chatStream(params)) {
 // Extended thinking — активация для конкретного вызова
 const thinkingParams = {
   provider: 'openrouter',
-  modelId: 'openai/gpt-5.2-thinking',
+  modelId: 'openai/gpt-5.2',
   messages: [...],
-  reasoningEffort: 'high', // переопределить дефолт 'medium' из MODEL_REGISTRY
+  reasoningEffort: 'high', // переопределить дефолт 'xhigh' из MODEL_REGISTRY
 };
 ```
 

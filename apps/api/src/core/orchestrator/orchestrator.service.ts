@@ -34,6 +34,22 @@ import { IDEA_LIMITS } from '@core/ideas/constants/ideas.constants';
 /** Минимальное количество аналитиков для валидного запуска */
 const MIN_ANALYSTS_FOR_START = SESSION_LIMITS.MIN_ANALYSTS;
 
+/**
+ * Жёсткая инструкция Директору на старте:
+ * он формирует ТЗ аналитикам и не запускает ресерч до их первого ответа.
+ */
+const INITIAL_DIRECTOR_TASK_INSTRUCTION = [
+  'Сформулируй ЧЁТКОЕ задание для аналитиков на этот раунд.',
+  'Учитывай все вводные и фильтры сессии.',
+  'Не предлагай собственные идеи и НЕ вызывай call_researcher на этом шаге.',
+].join(' ');
+
+/** Fallback-инструкция аналитикам, если в INITIAL ответ Директора пустой */
+const INITIAL_DIRECTOR_TASK_FALLBACK = [
+  'Технический fallback: Директор не сформулировал явное задание.',
+  'Работайте строго по вводным и фильтрам сессии, предложите 2-3 конкретные идеи.',
+].join(' ');
+
 /** Результат выполнения discussion loop */
 type DiscussionLoopResult = 'completed' | 'paused';
 
@@ -211,7 +227,7 @@ export class OrchestratorService {
         messages: directorContext,
         sessionId,
         roundId: round.id,
-        tools: this.buildTools(director),
+        tools: this.buildTools(director, { allowResearcherCall: false }),
         session,
       });
 
@@ -243,7 +259,7 @@ export class OrchestratorService {
         messages: synthesisContext,
         sessionId,
         roundId: round.id,
-        tools: this.buildTools(director),
+        tools: this.buildTools(director, { allowResearcherCall: false }),
         session,
       });
 
@@ -291,15 +307,18 @@ export class OrchestratorService {
     );
     const directorMessages: ChatMessage[] = [
       ...directorContext,
-      { role: 'user', content: session.inputPrompt },
+      {
+        role: 'user',
+        content: INITIAL_DIRECTOR_TASK_INSTRUCTION,
+      },
     ];
 
-    await this.runAgentWithLogging('INITIAL.DIRECTOR_TASK', {
+    const directorResult = await this.runAgentWithLogging('INITIAL.DIRECTOR_TASK', {
       agent: director,
       messages: directorMessages,
       sessionId: session.id,
       roundId: round.id,
-      tools: this.buildTools(director),
+      tools: this.buildTools(director, { allowResearcherCall: false }),
       session,
     });
 
@@ -311,9 +330,13 @@ export class OrchestratorService {
     const analystResults = await Promise.allSettled(
       analysts.map(async (analyst) => {
         const context = await this.roundManager.buildAgentContext(analyst, session, round.number);
+        const analystMessages =
+          directorResult.content.trim().length > 0
+            ? context
+            : [...context, { role: 'system' as const, content: INITIAL_DIRECTOR_TASK_FALLBACK }];
         return this.runAgentWithLogging('INITIAL.ANALYST', {
           agent: analyst,
-          messages: context,
+          messages: analystMessages,
           sessionId: session.id,
           roundId: round.id,
           tools: this.buildTools(analyst),
@@ -340,7 +363,7 @@ export class OrchestratorService {
       messages: synthesisContext,
       sessionId: session.id,
       roundId: round.id,
-      tools: this.buildTools(director),
+      tools: this.buildTools(director, { allowResearcherCall: false }),
       session,
     });
 
@@ -539,7 +562,7 @@ export class OrchestratorService {
       messages: finalMessages,
       sessionId: session.id,
       roundId: round.id,
-      tools: this.buildTools(director),
+      tools: this.buildTools(director, { allowResearcherCall: false }),
       session,
     });
 
@@ -608,7 +631,7 @@ export class OrchestratorService {
       messages: [...directorContext, resumeInstruction],
       sessionId: session.id,
       roundId: latestRound.id,
-      tools: this.buildTools(director),
+      tools: this.buildTools(director, { allowResearcherCall: false }),
       session,
     });
   }
@@ -618,9 +641,13 @@ export class OrchestratorService {
   // ──────────────────────────────────────────────────────────────────────────
 
   /** Построить tool definitions для агента */
-  private buildTools(agent: SessionAgent): ToolDefinition[] | undefined {
+  private buildTools(
+    agent: SessionAgent,
+    options?: { allowResearcherCall?: boolean },
+  ): ToolDefinition[] | undefined {
     const isDirector = agent.role === AGENT_ROLE.DIRECTOR;
-    const tools = this.agentRunner.buildToolDefinitions(agent, isDirector);
+    const canUseResearcherTool = options?.allowResearcherCall ?? true;
+    const tools = this.agentRunner.buildToolDefinitions(agent, isDirector && canUseResearcherTool);
     return tools.length > 0 ? tools : undefined;
   }
 

@@ -22,7 +22,7 @@ function buildValidAgents(): CreateAgentDto[] {
     {
       role: AGENT_ROLE.ANALYST,
       provider: 'openrouter',
-      modelId: 'openai/gpt-5.2-thinking',
+      modelId: 'openai/gpt-5.2',
     },
     {
       role: AGENT_ROLE.RESEARCHER,
@@ -113,7 +113,7 @@ describe('AgentsService', () => {
       agents.push({
         role: AGENT_ROLE.DIRECTOR,
         provider: 'openrouter',
-        modelId: 'openai/gpt-5.2-thinking',
+        modelId: 'openai/gpt-5.2',
       });
 
       await expect(service.createForSession(sessionId, agents)).rejects.toThrow(
@@ -129,7 +129,7 @@ describe('AgentsService', () => {
       oneAnalyst.push({
         role: AGENT_ROLE.ANALYST,
         provider: 'openrouter',
-        modelId: 'openai/gpt-5.2-thinking',
+        modelId: 'openai/gpt-5.2',
       });
 
       await expect(service.createForSession(sessionId, oneAnalyst)).rejects.toThrow(
@@ -143,7 +143,7 @@ describe('AgentsService', () => {
         agents.push({
           role: AGENT_ROLE.ANALYST,
           provider: 'openrouter',
-          modelId: 'openai/gpt-5.2-thinking',
+          modelId: 'openai/gpt-5.2',
         });
       }
 

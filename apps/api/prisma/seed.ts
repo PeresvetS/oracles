@@ -102,8 +102,8 @@ async function seedDefaultPrompts(): Promise<void> {
     },
     {
       role: AgentRole.ANALYST,
-      modelId: 'openai/gpt-5.2-thinking',
-      name: 'Аналитик — GPT-5.2 Thinking',
+      modelId: 'openai/gpt-5.2',
+      name: 'Аналитик — GPT-5.2',
       content: ANALYST_GPT_PROMPT,
     },
     {
@@ -120,8 +120,8 @@ async function seedDefaultPrompts(): Promise<void> {
     },
     {
       role: AgentRole.ANALYST,
-      modelId: 'google/gemini-3.1-pro',
-      name: 'Аналитик — Gemini 3.1 Pro',
+      modelId: 'google/gemini-3.1-pro-preview',
+      name: 'Аналитик — Gemini 3.1 Pro Preview',
       content: ANALYST_GEMINI_PROMPT,
     },
     {

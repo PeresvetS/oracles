@@ -85,10 +85,10 @@ src/core/prompts/
 | ANALYST | null | Универсальный fallback (Claude) |
 | ANALYST | anthropic/claude-sonnet-4-6 | Claude Sonnet 4.6 |
 | ANALYST | anthropic/claude-opus-4-6 | Claude Opus 4.6 |
-| ANALYST | openai/gpt-5.2-thinking | GPT-5.2 Thinking |
+| ANALYST | openai/gpt-5.2 | GPT-5.2 |
 | ANALYST | openai/gpt-5.3-codex | GPT-5.3 Codex |
 | ANALYST | openai/gpt-5.3-chat | GPT-5.3 Chat |
-| ANALYST | google/gemini-3.1-pro | Gemini 3.1 Pro |
+| ANALYST | google/gemini-3.1-pro-preview | Gemini 3.1 Pro Preview |
 | RESEARCHER | null | Ресерчер Perplexity |
 
 ## Зависимости

@@ -32,6 +32,12 @@ interface OpenRouterPlugin {
   max_results?: number;
 }
 
+/** Unified-конфиг reasoning для OpenRouter */
+interface OpenRouterReasoningConfig {
+  enabled: boolean;
+  effort?: ReasoningEffort;
+}
+
 /** Сырой формат аннотации от OpenRouter */
 interface RawAnnotation {
   type: string;
@@ -83,7 +89,8 @@ interface AssistantMessageWithReasoning {
  * - Пересоздание клиента при смене API-ключа
  * - Расчёт стоимости по MODEL_REGISTRY
  * - Стриминг через AsyncGenerator
- * - Поддержка extended thinking через reasoning: { effort } (OpenRouter non-standard extension)
+ * - Reasoning включён для всех запросов: reasoning: { enabled: true }
+ * - Для thinking-моделей добавляется reasoning.effort (OpenRouter non-standard extension)
  */
 @Injectable()
 export class OpenRouterProvider implements LlmProvider {
@@ -98,14 +105,15 @@ export class OpenRouterProvider implements LlmProvider {
   /**
    * Синхронный вызов LLM через OpenRouter.
    *
-   * Для моделей с extended thinking автоматически добавляет reasoning: { effort }.
+   * reasoning включается для всех моделей (enabled=true).
+   * Для моделей с extended thinking добавляется effort.
    *
    * @throws Error если API-ключ не настроен или OpenRouter вернул пустой ответ
    */
   async chat(params: LlmChatParams): Promise<LlmChatResponse> {
     const client = this.getClient();
     const startTime = Date.now();
-    const reasoningEffort = this.resolveReasoningEffort(params);
+    const reasoning = this.buildReasoningConfig(params);
     const plugins: OpenRouterPlugin[] | undefined = params.webSearchEnabled
       ? [{ id: 'web' }]
       : undefined;
@@ -117,7 +125,7 @@ export class OpenRouterProvider implements LlmProvider {
       max_tokens: params.maxTokens ?? LLM_DEFAULTS.MAX_TOKENS,
       ...(params.tools?.length ? { tools: this.mapTools(params.tools) } : {}),
       ...(plugins ? { plugins } : {}),
-      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+      reasoning,
     };
 
     const response = await client.chat.completions.create(
@@ -171,7 +179,7 @@ export class OpenRouterProvider implements LlmProvider {
   async *chatStream(params: LlmChatParams): AsyncGenerator<LlmStreamChunk> {
     const client = this.getClient();
     const startTime = Date.now();
-    const reasoningEffort = this.resolveReasoningEffort(params);
+    const reasoning = this.buildReasoningConfig(params);
     const plugins: OpenRouterPlugin[] | undefined = params.webSearchEnabled
       ? [{ id: 'web' }]
       : undefined;
@@ -183,7 +191,7 @@ export class OpenRouterProvider implements LlmProvider {
       max_tokens: params.maxTokens ?? LLM_DEFAULTS.MAX_TOKENS,
       ...(params.tools?.length ? { tools: this.mapTools(params.tools) } : {}),
       ...(plugins ? { plugins } : {}),
-      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+      reasoning,
       stream: true as const,
       stream_options: { include_usage: true },
     };
@@ -322,12 +330,23 @@ export class OpenRouterProvider implements LlmProvider {
   }
 
   /**
+   * Построить reasoning-конфиг для OpenRouter.
+   *
+   * По требованиям проекта reasoning включается для всех моделей.
+   * Если для модели задан effort (или пришёл явно в params), передаём его дополнительно.
+   */
+  private buildReasoningConfig(params: LlmChatParams): OpenRouterReasoningConfig {
+    const effort = this.resolveReasoningEffort(params);
+    return effort ? { enabled: true, effort } : { enabled: true };
+  }
+
+  /**
    * Определить уровень reasoning effort для запроса.
    *
    * Приоритет:
    * 1. Явное значение из params.reasoningEffort
    * 2. Значение из MODEL_REGISTRY по modelId
-   * 3. undefined (thinking не активируется)
+   * 3. undefined (reasoning остаётся enabled=true без явного effort)
    */
   private resolveReasoningEffort(params: LlmChatParams): ReasoningEffort | undefined {
     if (params.reasoningEffort) {

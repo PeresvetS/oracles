@@ -22,7 +22,7 @@ export interface ModelInfo {
   capabilities: string[];
   /**
    * Уровень reasoning effort по умолчанию для этой модели.
-   * Задаётся только для моделей с extended thinking (gpt-5.2-thinking, gpt-5.3-codex и т.д.).
+   * Задаётся только для моделей с extended thinking (gpt-5.2, gpt-5.3-codex и т.д.).
    * Передаётся в OpenRouter через поле reasoning: { effort }.
    */
   reasoningEffort?: ReasoningEffort;

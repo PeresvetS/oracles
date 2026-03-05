@@ -1,5 +1,11 @@
-/** Уровень детализации reasoning (thinking) для моделей с extended thinking */
-export type ReasoningEffort = "low" | "medium" | "high";
+/** Уровень детализации reasoning (thinking) по unified OpenRouter API */
+export type ReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
 
 /** Цитата из веб-поиска (формат OpenRouter annotations) */
 export interface UrlCitation {

@@ -100,7 +100,7 @@ describe('OrchestratorService', () => {
     role: AGENT_ROLE.ANALYST,
     name: 'Аналитик 2',
     provider: 'openrouter',
-    modelId: 'google/gemini-3.1-pro',
+    modelId: 'google/gemini-3.1-pro-preview',
     systemPrompt: 'Ты аналитик 2',
     webSearchEnabled: true,
     totalTokensInput: 0,

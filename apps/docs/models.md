@@ -75,10 +75,10 @@ src/config/
 |----|----------|-----------|-----------|----------|
 | `anthropic/claude-sonnet-4-6` | Claude Sonnet 4.6 | openrouter | claude | 200K |
 | `anthropic/claude-opus-4-6` | Claude Opus 4.6 | openrouter | claude | 200K |
-| `openai/gpt-5.2-thinking` | GPT-5.2 Thinking | openrouter | gpt | 128K |
+| `openai/gpt-5.2` | GPT-5.2 | openrouter | gpt | 128K |
 | `openai/gpt-5.3-codex` | GPT-5.3 Codex | openrouter | gpt | 128K |
 | `openai/gpt-5.3-chat` | GPT-5.3 Chat | openrouter | gpt | 128K |
-| `google/gemini-3.1-pro` | Gemini 3.1 Pro | openrouter | gemini | 1M |
+| `google/gemini-3.1-pro-preview` | Gemini 3.1 Pro Preview | openrouter | gemini | 1M |
 | `sonar-reasoning-pro` | Sonar Reasoning Pro | perplexity | sonar | 128K |
 | `sonar-pro` | Sonar Pro | perplexity | sonar | 200K |
 
