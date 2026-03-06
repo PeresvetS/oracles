@@ -13,10 +13,12 @@ import {
   type ToolCallResult,
   type ToolDefinition,
   type ReasoningDetail,
+  type ReasoningEffort,
   type UrlCitation,
 } from '@oracle/shared';
 import { PrismaService } from '@prisma/prisma.service';
 import { LlmGatewayService } from '@integrations/llm/llm-gateway.service';
+import { MODEL_REGISTRY } from '@config/models.registry';
 import {
   SESSION_EVENT_EMITTER,
   type ISessionEventEmitter,
@@ -48,6 +50,16 @@ const MAX_RESEARCH_CALLS_PER_TURN = 1;
 /** Сообщение для LLM, если в одном ходе запрошено слишком много call_researcher */
 const RESEARCH_PER_TURN_LIMIT_MESSAGE =
   'Допустим только 1 вызов ресерчера за один ход. Сформулируй итог на основе уже полученных данных.';
+
+/** Множители таймаута для thinking-моделей (по уровню reasoning effort) */
+const REASONING_TIMEOUT_MULTIPLIER: Record<ReasoningEffort, number> = {
+  none: 1,
+  minimal: 1,
+  low: 1,
+  medium: 1.5,
+  high: 2,
+  xhigh: 3,
+};
 
 /** Аргументы тулзы, переданные от LLM */
 interface ToolArguments {
@@ -340,7 +352,8 @@ export class AgentRunnerService {
     sessionId: string,
   ): Promise<StreamIterationResult> {
     const startTime = Date.now();
-    const deadlineTs = startTime + AGENT_DEFAULTS.TIMEOUT_MS;
+    const requestTimeoutMs = this.resolveRequestTimeoutMs(chatParams);
+    const deadlineTs = startTime + requestTimeoutMs;
     const streamIterator = this.llmGateway.chatStream(chatParams)[Symbol.asyncIterator]();
 
     try {
@@ -446,12 +459,10 @@ export class AgentRunnerService {
    */
   private executeWithTimeout(chatParams: LlmChatParams): Promise<LlmChatResponse> {
     let timeoutId: NodeJS.Timeout | null = null;
+    const requestTimeoutMs = this.resolveRequestTimeoutMs(chatParams);
 
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () => reject(new Error(AGENT_TIMEOUT_ERROR)),
-        AGENT_DEFAULTS.TIMEOUT_MS,
-      );
+      timeoutId = setTimeout(() => reject(new Error(AGENT_TIMEOUT_ERROR)), requestTimeoutMs);
       timeoutId.unref();
     });
 
@@ -716,6 +727,18 @@ export class AgentRunnerService {
           `${i + 1}. ${a.title}\n   ${a.url}${a.content ? `\n   ${a.content.slice(0, 200)}` : ''}`,
       )
       .join('\n');
+  }
+
+  private resolveRequestTimeoutMs(chatParams: LlmChatParams): number {
+    const modelEffort =
+      chatParams.reasoningEffort ?? this.resolveModelReasoningEffort(chatParams.modelId);
+    const multiplier = modelEffort ? REASONING_TIMEOUT_MULTIPLIER[modelEffort] : 1;
+    return Math.round(AGENT_DEFAULTS.TIMEOUT_MS * multiplier);
+  }
+
+  private resolveModelReasoningEffort(modelId: string): ReasoningEffort | undefined {
+    const model = MODEL_REGISTRY.find((entry) => entry.id === modelId);
+    return model?.reasoningEffort;
   }
 
   private async pauseSessionAfterDirectorFailure(

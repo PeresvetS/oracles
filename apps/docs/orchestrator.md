@@ -105,7 +105,9 @@ User Message:
    - Генерирует `messageId = randomUUID()` ДО начала стриминга
    - Вызывает `emitMessageStart(sessionId, { messageId, agentId, ... })`
    - Tool call loop (до MAX_TOOL_CALLS_PER_TURN=5 итераций):
-     - `executeStreamWithTimeout()` → `llmGateway.chatStream()` → AbortController таймаут 120с
+     - `executeStreamWithTimeout()` → `llmGateway.chatStream()` → динамический таймаут:
+       - базовый 120с
+       - для thinking-моделей (`reasoningEffort=medium/high/xhigh`) увеличивается до 180/240/360с
      - Каждый `text` чанк → `emitMessageChunk(sessionId, { messageId, chunk })`
      - `tool_call` чанки аккумулируются → `processToolCalls` → добавляются в messages
      - `done` чанк → сохраняет usage (tokens, cost)

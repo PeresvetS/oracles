@@ -700,6 +700,37 @@ describe('AgentRunnerService', () => {
   });
 
   describe('timeout', () => {
+    it('должен увеличивать таймаут для thinking-модели GPT-5.3 Codex', () => {
+      const internalService = service as unknown as {
+        resolveRequestTimeoutMs: (params: {
+          modelId: string;
+          reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+        }) => number;
+      };
+
+      const timeoutMs = internalService.resolveRequestTimeoutMs({
+        modelId: 'openai/gpt-5.3-codex',
+      });
+
+      expect(timeoutMs).toBeGreaterThan(120_000);
+      expect(timeoutMs).toBe(360_000);
+    });
+
+    it('должен использовать базовый таймаут для модели без thinking effort', () => {
+      const internalService = service as unknown as {
+        resolveRequestTimeoutMs: (params: {
+          modelId: string;
+          reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+        }) => number;
+      };
+
+      const timeoutMs = internalService.resolveRequestTimeoutMs({
+        modelId: 'openai/gpt-5.3-chat',
+      });
+
+      expect(timeoutMs).toBe(120_000);
+    });
+
     it('должен вернуть пустой результат если стрим бросает ошибку таймаута', async () => {
       llmGateway.chatStream.mockImplementation(() => {
         throw new Error(AGENT_TIMEOUT_ERROR);
